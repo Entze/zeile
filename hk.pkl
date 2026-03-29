@@ -9,8 +9,12 @@ local formatters = new Mapping<String, Step> {
   }
   ["pkl_format"] = Builtins.pkl_format
   ["mise"] = Builtins.mise
-  ["trailing_whitespace"] = Builtins.trailing_whitespace
-  ["newlines"] = Builtins.newlines
+  ["trailing_whitespace"] = (Builtins.trailing_whitespace) {
+    types = List("text")
+  }
+  ["newlines"] = (Builtins.newlines) {
+    types = List("text")
+  }
 }
 
 local checkers = new Mapping<String, Step> {
