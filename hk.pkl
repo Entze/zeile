@@ -18,10 +18,17 @@ local formatters = new Mapping<String, Step> {
 }
 
 local checkers = new Mapping<String, Step> {
+  ["action_validator"] {
+    depends = List("yamlfmt")
+    glob = List(".github/workflows/*.yml", ".github/workflows/*.yaml")
+    check = "action-validator {{files}}"
+  }
   ["pkl"] = Builtins.pkl
   ["actionlint"] = (Builtins.actionlint) {
     depends = List("newlines", "trailing_whitespace")
   }
+  ["pinact"] = Builtins.pinact
+  ["zizmor"] = Builtins.zizmor
 }
 
 local linters = new Mapping<String, Step> {
