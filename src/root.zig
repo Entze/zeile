@@ -1,23 +1,139 @@
-//! By convention, root.zig is the root source file when making a library.
 const std = @import("std");
 
-pub fn bufferedPrint() !void {
-    // Stdout is for the actual output of your application, for example if you
-    // are implementing gzip, then only the compressed bytes should be sent to
-    // stdout, not any debugging messages.
-    var stdout_buffer: [1024]u8 = undefined;
-    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
-    const stdout = &stdout_writer.interface;
+pub const Model = struct {
+    id: []const u8,
+    display_name: []const u8,
+};
 
-    try stdout.print("Run `zig build test` to run the tests.\n", .{});
-
-    try stdout.flush(); // Don't forget to flush!
+comptime {
+    std.debug.assert(@sizeOf(Model) == 32);
 }
 
-pub fn add(a: i32, b: i32) i32 {
-    return a + b;
+pub const Workspace = struct {
+    current_dir: []const u8,
+    project_dir: []const u8,
+};
+
+comptime {
+    std.debug.assert(@sizeOf(Workspace) == 32);
 }
 
-test "basic add functionality" {
-    try std.testing.expect(add(3, 7) == 10);
+pub const OutputStyle = struct {
+    name: []const u8,
+};
+
+comptime {
+    std.debug.assert(@sizeOf(OutputStyle) == 16);
+}
+
+pub const Cost = struct {
+    total_cost_usd: f64,
+    total_duration_ms: u64,
+    total_api_duration_ms: u64,
+    total_lines_added: u64,
+    total_lines_removed: u64,
+};
+
+comptime {
+    std.debug.assert(@sizeOf(Cost) == 40);
+}
+
+pub const TokenUsage = struct {
+    input_tokens: u64,
+    output_tokens: u64,
+    cache_creation_input_tokens: u64,
+    cache_read_input_tokens: u64,
+};
+
+comptime {
+    std.debug.assert(@sizeOf(TokenUsage) == 32);
+}
+
+pub const ContextWindow = struct {
+    total_input_tokens: u64,
+    total_output_tokens: u64,
+    context_window_size: u64,
+    used_percentage: ?u8,
+    remaining_percentage: ?u8,
+    current_usage: ?TokenUsage,
+};
+
+comptime {
+    std.debug.assert(@sizeOf(ContextWindow) == 72);
+}
+
+pub const RateLimitWindow = struct {
+    used_percentage: f64,
+    resets_at: u64,
+};
+
+comptime {
+    std.debug.assert(@sizeOf(RateLimitWindow) == 16);
+}
+
+pub const RateLimits = struct {
+    five_hour: ?RateLimitWindow,
+    seven_day: ?RateLimitWindow,
+};
+
+comptime {
+    std.debug.assert(@sizeOf(RateLimits) == 48);
+}
+
+pub const VimMode = enum {
+    NORMAL,
+    INSERT,
+};
+
+comptime {
+    std.debug.assert(@sizeOf(VimMode) == 1);
+}
+
+pub const Vim = struct {
+    mode: VimMode,
+};
+
+comptime {
+    std.debug.assert(@sizeOf(Vim) == 1);
+}
+
+pub const Agent = struct {
+    name: []const u8,
+};
+
+comptime {
+    std.debug.assert(@sizeOf(Agent) == 16);
+}
+
+pub const Worktree = struct {
+    name: []const u8,
+    path: []const u8,
+    branch: ?[]const u8,
+    original_cwd: []const u8,
+    original_branch: ?[]const u8,
+};
+
+comptime {
+    std.debug.assert(@sizeOf(Worktree) == 80);
+}
+
+pub const SessionData = struct {
+    cwd: []const u8,
+    session_id: []const u8,
+    transcript_path: []const u8,
+    model: Model,
+    workspace: Workspace,
+    version: []const u8,
+    output_style: OutputStyle,
+    cost: Cost,
+    context_window: ContextWindow,
+    exceeds_200k_tokens: bool,
+    rate_limits: ?RateLimits,
+    vim: ?Vim,
+    agent: ?Agent,
+    worktree: ?Worktree,
+};
+
+comptime {
+    std.debug.assert(@sizeOf(SessionData) == 432);
 }

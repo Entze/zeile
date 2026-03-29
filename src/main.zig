@@ -3,8 +3,7 @@ const zeile = @import("zeile");
 
 pub fn main() !void {
     // Prints to stderr, ignoring potential errors.
-    std.debug.print("All your {s} are belong to us.\n", .{"codebase"});
-    try zeile.bufferedPrint();
+    _ = zeile;
 }
 
 test "simple test" {
