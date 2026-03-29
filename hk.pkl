@@ -1,0 +1,57 @@
+amends "package://github.com/jdx/hk/releases/download/v1.39.0/hk@1.39.0#/Config.pkl"
+import "package://github.com/jdx/hk/releases/download/v1.39.0/hk@1.39.0#/Builtins.pkl"
+
+local formatters = new Mapping<String, Step> {
+  ["zig_fmt"] {
+    glob = List("**/*.zig", "**/*.zon")
+    check = "zig fmt --check {{files}}"
+    fix = "zig fmt {{files}}"
+  }
+  ["pkl_format"] = Builtins.pkl_format
+  ["mise"] = Builtins.mise
+  ["trailing_whitespace"] = Builtins.trailing_whitespace
+  ["newlines"] = Builtins.newlines
+}
+
+local checkers = new Mapping<String, Step> {
+  ["pkl"] = Builtins.pkl
+  ["actionlint"] = (Builtins.actionlint) {
+    depends = List("newlines", "trailing_whitespace")
+  }
+}
+
+local linters = new Mapping<String, Step> {
+  ["zig_build"] {
+    glob = List("**/*.zig", "**/*.zon")
+    check = "zig build"
+  }
+  ["zig_test"] {
+    glob = List("**/*.zig")
+    check = "zig build test"
+  }
+}
+
+local baseHook = new Hook {
+  steps {
+    ["formatters"] = new Group {
+      steps = formatters
+    }
+    ["checkers"] = new Group {
+      steps = checkers
+    }
+  }
+}
+
+hooks {
+  ["pre-commit"] = (baseHook) {
+    fix = true
+    stash = "git"
+  }
+  ["fix"] = (baseHook) {
+    fix = true
+  }
+  ["check"] = baseHook
+  ["lint"] {
+    steps = linters
+  }
+}
