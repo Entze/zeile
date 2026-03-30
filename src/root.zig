@@ -212,7 +212,7 @@ pub const SessionData = struct {
     /// Resolve a dot-separated field path to a leaf value.
     /// Returns `error.FieldNotFound` if the path does not match any field.
     /// Returns `error.NotPrimitive` if the path resolves to a struct.
-    /// Returns `.@"null"` if any optional in the chain is null at runtime.
+    /// Returns `.null` if any optional in the chain is null at runtime.
     pub fn get(data: *const SessionData, path: []const u8) error{ FieldNotFound, NotPrimitive }!Primitive {
         return getField(SessionData, "", data.*, path);
     }
