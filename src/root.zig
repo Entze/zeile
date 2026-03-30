@@ -214,7 +214,7 @@ pub const SessionData = struct {
     /// Returns `error.NotPrimitive` if the path resolves to a struct.
     /// Returns `.null` if any optional in the chain is null at runtime.
     pub fn get(data: *const SessionData, path: []const u8) error{ FieldNotFound, NotPrimitive }!Primitive {
-        return getField(SessionData, "", data.*, path);
+        return getField(SessionData, "", data, path);
     }
 };
 
@@ -244,27 +244,27 @@ fn wrapPrimitive(comptime T: type, value: T) Primitive {
     unreachable;
 }
 
-fn getField(comptime T: type, comptime prefix: []const u8, data: T, path: []const u8) error{ FieldNotFound, NotPrimitive }!Primitive {
+fn getField(comptime T: type, comptime prefix: []const u8, data: *const T, path: []const u8) error{ FieldNotFound, NotPrimitive }!Primitive {
     inline for (@typeInfo(T).@"struct".fields) |field| {
         const field_path = comptime prefix ++ "." ++ field.name;
         const FieldType = field.type;
         const Inner = comptime stripOptional(FieldType);
         if (std.mem.eql(u8, path, field_path)) {
             if (comptime isPrimitive(Inner)) {
-                return wrapPrimitive(FieldType, @field(data, field.name));
+                return wrapPrimitive(FieldType, @field(data.*, field.name));
             }
             if (comptime @typeInfo(FieldType) == .optional) {
-                if (@field(data, field.name) == null) return .null;
+                if (@field(data.*, field.name) == null) return .null;
             }
             return error.NotPrimitive;
         }
         if (comptime @typeInfo(Inner) == .@"struct") {
             if (std.mem.startsWith(u8, path, comptime field_path ++ ".")) {
                 if (comptime @typeInfo(FieldType) == .optional) {
-                    const val = @field(data, field.name) orelse return .null;
-                    return getField(Inner, field_path, val, path);
+                    const val = @field(data.*, field.name) orelse return .null;
+                    return getField(Inner, field_path, &val, path);
                 }
-                return getField(Inner, field_path, @field(data, field.name), path);
+                return getField(Inner, field_path, &@field(data.*, field.name), path);
             }
         }
     }
