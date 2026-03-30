@@ -39,40 +39,144 @@ const input_bytes_max = jsonSizeMax(zeile.SessionData);
 const io_buf_size = 4096;
 
 pub fn main() void {
-    run() catch |err| {
+    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .init;
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+
+    const io_buf = allocator.create([io_buf_size]u8) catch @panic("OOM");
+    defer allocator.destroy(io_buf);
+    const input_buf = allocator.alloc(u8, input_bytes_max) catch @panic("OOM");
+    defer allocator.free(input_buf);
+
+    const input_len = std.fs.File.stdin().readAll(input_buf) catch |err| {
         var buf: [256]u8 = undefined;
         var w = std.fs.File.stderr().writerStreaming(&buf);
         w.interface.print("error: {s}\n", .{@errorName(err)}) catch {};
         w.interface.flush() catch {};
         std.process.exit(1);
     };
-}
-
-fn run() !void {
-    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .init;
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
-
-    // Allocate all buffers on the heap at startup.
-    const io_buf = try allocator.create([io_buf_size]u8);
-    defer allocator.destroy(io_buf);
-    const input_buf = try allocator.alloc(u8, input_bytes_max);
-    defer allocator.free(input_buf);
-
-    // Read session data from stdin into the pre-allocated buffer.
-    const input_len = try std.fs.File.stdin().readAll(input_buf);
     const input = input_buf[0..input_len];
 
-    const parsed = std.json.parseFromSlice(zeile.SessionData, allocator, input, .{}) catch |err| {
-        var w = std.fs.File.stderr().writerStreaming(io_buf);
-        w.interface.print("error: failed to parse session data: {s}\n", .{@errorName(err)}) catch {};
-        w.interface.flush() catch {};
+    var w = std.fs.File.stdout().writerStreaming(io_buf);
+    run(allocator, input, &w.interface) catch |err| {
+        var buf: [256]u8 = undefined;
+        var ew = std.fs.File.stderr().writerStreaming(&buf);
+        ew.interface.print("error: {s}\n", .{@errorName(err)}) catch {};
+        ew.interface.flush() catch {};
         std.process.exit(1);
     };
-    defer parsed.deinit();
+    w.interface.flush() catch {};
+}
 
-    var w = std.fs.File.stdout().writerStreaming(io_buf);
-    try std.json.Stringify.value(parsed.value, .{ .whitespace = .indent_2 }, &w.interface);
-    try w.interface.writeByte('\n');
-    try w.interface.flush();
+fn run(allocator: std.mem.Allocator, input: []const u8, writer: *std.io.Writer) !void {
+    const parsed = try std.json.parseFromSlice(zeile.SessionData, allocator, input, .{});
+    defer parsed.deinit();
+    try std.json.Stringify.value(parsed.value, .{ .whitespace = .indent_2 }, writer);
+    try writer.writeByte('\n');
+}
+
+const testing = std.testing;
+
+test "run: valid complete JSON is pretty-printed to stdout" {
+    const allocator = testing.allocator;
+    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/example.json", 1024 * 1024);
+    defer allocator.free(input);
+    var aw: std.io.Writer.Allocating = .init(allocator);
+    defer aw.deinit();
+    try run(allocator, input, &aw.writer);
+    const output = try aw.toOwnedSlice();
+    defer allocator.free(output);
+    // Output must be valid JSON that parses into SessionData.
+    const parsed = try std.json.parseFromSlice(zeile.SessionData, allocator, output, .{});
+    defer parsed.deinit();
+    // Verify representative fields survived the round-trip.
+    try testing.expectEqualStrings("abc123...", parsed.value.session_id);
+    try testing.expectEqualStrings("claude-opus-4-6", parsed.value.model.id);
+    try testing.expectEqual(@as(u64, 45000), parsed.value.cost.total_duration_ms);
+    try testing.expectEqualStrings("security-reviewer", parsed.value.agent.?.name);
+    // Output ends with a newline.
+    try testing.expect(output.len > 0 and output[output.len - 1] == '\n');
+}
+
+test "run: optional fields set to null produce valid output" {
+    const allocator = testing.allocator;
+    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/minimal.json", 1024 * 1024);
+    defer allocator.free(input);
+    var aw: std.io.Writer.Allocating = .init(allocator);
+    defer aw.deinit();
+    try run(allocator, input, &aw.writer);
+    const output = try aw.toOwnedSlice();
+    defer allocator.free(output);
+    const parsed = try std.json.parseFromSlice(zeile.SessionData, allocator, output, .{});
+    defer parsed.deinit();
+    try testing.expectEqual(@as(?zeile.RateLimits, null), parsed.value.rate_limits);
+    try testing.expectEqual(@as(?zeile.Vim, null), parsed.value.vim);
+    try testing.expectEqual(@as(?zeile.Agent, null), parsed.value.agent);
+    try testing.expectEqual(@as(?zeile.Worktree, null), parsed.value.worktree);
+}
+
+test "run: omitted optional fields produce parse error" {
+    const allocator = testing.allocator;
+    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/missing_optional_fields.json", 1024 * 1024);
+    defer allocator.free(input);
+    var aw: std.io.Writer.Allocating = .init(allocator);
+    defer aw.deinit();
+    try testing.expectError(error.MissingField, run(allocator, input, &aw.writer));
+}
+
+test "run: empty stdin produces parse error" {
+    const allocator = testing.allocator;
+    var aw: std.io.Writer.Allocating = .init(allocator);
+    defer aw.deinit();
+    try testing.expectError(error.UnexpectedEndOfInput, run(allocator, "", &aw.writer));
+}
+
+test "run: invalid JSON produces parse error" {
+    const allocator = testing.allocator;
+    var aw: std.io.Writer.Allocating = .init(allocator);
+    defer aw.deinit();
+    try testing.expectError(error.SyntaxError, run(allocator, "not json at all", &aw.writer));
+}
+
+test "run: truncated JSON produces parse error" {
+    const allocator = testing.allocator;
+    var aw: std.io.Writer.Allocating = .init(allocator);
+    defer aw.deinit();
+    try testing.expectError(error.UnexpectedEndOfInput, run(allocator, "{\"cwd\":\"/c\",\"session_id", &aw.writer));
+}
+
+test "run: unknown fields are rejected" {
+    const allocator = testing.allocator;
+    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/extra_field.json", 1024 * 1024);
+    defer allocator.free(input);
+    var aw: std.io.Writer.Allocating = .init(allocator);
+    defer aw.deinit();
+    try testing.expectError(error.UnknownField, run(allocator, input, &aw.writer));
+}
+
+test "run: round-trip preserves all data" {
+    const allocator = testing.allocator;
+    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/example.json", 1024 * 1024);
+    defer allocator.free(input);
+    // First pass.
+    var aw1: std.io.Writer.Allocating = .init(allocator);
+    defer aw1.deinit();
+    try run(allocator, input, &aw1.writer);
+    const first = try aw1.toOwnedSlice();
+    defer allocator.free(first);
+    // Second pass: feed first output back in.
+    var aw2: std.io.Writer.Allocating = .init(allocator);
+    defer aw2.deinit();
+    try run(allocator, first, &aw2.writer);
+    const second = try aw2.toOwnedSlice();
+    defer allocator.free(second);
+    // Both outputs must be byte-identical (idempotent).
+    try testing.expectEqualStrings(first, second);
+}
+
+test "run: wrong JSON shape produces parse error" {
+    const allocator = testing.allocator;
+    var aw: std.io.Writer.Allocating = .init(allocator);
+    defer aw.deinit();
+    try testing.expectError(error.UnexpectedToken, run(allocator, "[]", &aw.writer));
 }
