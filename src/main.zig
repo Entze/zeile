@@ -63,7 +63,7 @@ pub fn main() void {
     run(allocator, input, &w.interface) catch |err| {
         var buf: [256]u8 = undefined;
         var ew = std.fs.File.stderr().writerStreaming(&buf);
-        ew.interface.print("error: {s}\n", .{@errorName(err)}) catch {};
+        ew.interface.print("error: failed to process session data ({s})\n", .{@errorName(err)}) catch {};
         ew.interface.flush() catch {};
         std.process.exit(1);
     };
