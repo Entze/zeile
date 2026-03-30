@@ -2,22 +2,22 @@ const std = @import("std");
 const zeile = @import("zeile");
 
 /// Maximum assumed length of any string value in the JSON input.
-const max_string_len = 256;
+const json_string_len_max = 256;
 
 /// Comptime upper bound on the JSON byte size for a given type,
 /// assuming string values are at most `max_string_len` bytes.
-fn maxJsonSize(comptime T: type) comptime_int {
+fn jsonSizeMax(comptime T: type) comptime_int {
     return switch (@typeInfo(T)) {
         .@"struct" => |s| blk: {
             var size: comptime_int = 2; // {}
             for (s.fields) |f| {
                 size += f.name.len + 2 + 2 + 2; // "name": ,\n
-                size += maxJsonSize(f.type);
+                size += jsonSizeMax(f.type);
             }
             break :blk size;
         },
-        .optional => |o| @max(4, maxJsonSize(o.child)), // "null" or inner
-        .pointer => |p| if (p.size == .slice and p.child == u8) max_string_len + 2 else 0,
+        .optional => |o| @max(4, jsonSizeMax(o.child)), // "null" or inner
+        .pointer => |p| if (p.size == .slice and p.child == u8) json_string_len_max + 2 else 0,
         .float => 24,
         .int => 20,
         .bool => 5,
@@ -33,7 +33,7 @@ fn maxJsonSize(comptime T: type) comptime_int {
 }
 
 /// Maximum expected size of the JSON input from stdin.
-const max_input_bytes = maxJsonSize(zeile.SessionData);
+const input_bytes_max = jsonSizeMax(zeile.SessionData);
 
 /// Size of the I/O streaming buffer.
 const io_buf_size = 4096;
@@ -56,7 +56,7 @@ fn run() !void {
     // Allocate all buffers on the heap at startup.
     const io_buf = try allocator.create([io_buf_size]u8);
     defer allocator.destroy(io_buf);
-    const input_buf = try allocator.alloc(u8, max_input_bytes);
+    const input_buf = try allocator.alloc(u8, input_bytes_max);
     defer allocator.free(input_buf);
 
     // Read session data from stdin into the pre-allocated buffer.
