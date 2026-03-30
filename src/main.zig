@@ -43,9 +43,11 @@ pub fn main() void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    const io_buf = allocator.create([io_buf_size]u8) catch @panic("OOM");
+    const io_buf = allocator.create([io_buf_size]u8) catch
+        std.debug.panic("error: failed to allocate {d} bytes for the io buffer", .{io_buf_size});
     defer allocator.destroy(io_buf);
-    const input_buf = allocator.alloc(u8, input_bytes_max) catch @panic("OOM");
+    const input_buf = allocator.alloc(u8, input_bytes_max) catch
+        std.debug.panic("error: failed to allocate {d} bytes for the input buffer", .{input_bytes_max});
     defer allocator.free(input_buf);
 
     const input_len = std.fs.File.stdin().readAll(input_buf) catch |err| {
@@ -69,7 +71,7 @@ pub fn main() void {
 }
 
 fn run(allocator: std.mem.Allocator, input: []const u8, writer: *std.io.Writer) !void {
-    const parsed = try std.json.parseFromSlice(zeile.SessionData, allocator, input, .{});
+    const parsed = try std.json.parseFromSlice(zeile.SessionData, allocator, input, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
     try std.json.Stringify.value(parsed.value, .{ .whitespace = .indent_2 }, writer);
     try writer.writeByte('\n');
@@ -79,7 +81,7 @@ const testing = std.testing;
 
 test "run: valid complete JSON is pretty-printed to stdout" {
     const allocator = testing.allocator;
-    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/example.json", 1024 * 1024);
+    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/good/complete.json", 1024 * 1024);
     defer allocator.free(input);
     var aw: std.io.Writer.Allocating = .init(allocator);
     defer aw.deinit();
@@ -100,7 +102,7 @@ test "run: valid complete JSON is pretty-printed to stdout" {
 
 test "run: optional fields set to null produce valid output" {
     const allocator = testing.allocator;
-    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/minimal.json", 1024 * 1024);
+    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/good/minimal.json", 1024 * 1024);
     defer allocator.free(input);
     var aw: std.io.Writer.Allocating = .init(allocator);
     defer aw.deinit();
@@ -115,48 +117,71 @@ test "run: optional fields set to null produce valid output" {
     try testing.expectEqual(@as(?zeile.Worktree, null), parsed.value.worktree);
 }
 
-test "run: omitted optional fields produce parse error" {
+test "run: omitted optional fields default to null" {
     const allocator = testing.allocator;
-    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/missing_optional_fields.json", 1024 * 1024);
+    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/good/missing_optional_fields.json", 1024 * 1024);
     defer allocator.free(input);
     var aw: std.io.Writer.Allocating = .init(allocator);
     defer aw.deinit();
-    try testing.expectError(error.MissingField, run(allocator, input, &aw.writer));
+    try run(allocator, input, &aw.writer);
+    const output = try aw.toOwnedSlice();
+    defer allocator.free(output);
+    const parsed = try std.json.parseFromSlice(zeile.SessionData, allocator, output, .{});
+    defer parsed.deinit();
+    try testing.expectEqual(@as(?zeile.RateLimits, null), parsed.value.rate_limits);
+    try testing.expectEqual(@as(?zeile.Vim, null), parsed.value.vim);
+    try testing.expectEqual(@as(?zeile.Agent, null), parsed.value.agent);
+    try testing.expectEqual(@as(?zeile.Worktree, null), parsed.value.worktree);
+    try testing.expectEqual(@as(?u8, null), parsed.value.context_window.used_percentage);
+    try testing.expectEqual(@as(?u8, null), parsed.value.context_window.remaining_percentage);
+    try testing.expectEqual(@as(?zeile.TokenUsage, null), parsed.value.context_window.current_usage);
 }
 
 test "run: empty stdin produces parse error" {
     const allocator = testing.allocator;
+    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/bad/empty.json", 1024 * 1024);
+    defer allocator.free(input);
     var aw: std.io.Writer.Allocating = .init(allocator);
     defer aw.deinit();
-    try testing.expectError(error.UnexpectedEndOfInput, run(allocator, "", &aw.writer));
+    try testing.expectError(error.UnexpectedEndOfInput, run(allocator, input, &aw.writer));
 }
 
 test "run: invalid JSON produces parse error" {
     const allocator = testing.allocator;
+    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/bad/invalid.json", 1024 * 1024);
+    defer allocator.free(input);
     var aw: std.io.Writer.Allocating = .init(allocator);
     defer aw.deinit();
-    try testing.expectError(error.SyntaxError, run(allocator, "not json at all", &aw.writer));
+    try testing.expectError(error.SyntaxError, run(allocator, input, &aw.writer));
 }
 
 test "run: truncated JSON produces parse error" {
     const allocator = testing.allocator;
-    var aw: std.io.Writer.Allocating = .init(allocator);
-    defer aw.deinit();
-    try testing.expectError(error.UnexpectedEndOfInput, run(allocator, "{\"cwd\":\"/c\",\"session_id", &aw.writer));
-}
-
-test "run: unknown fields are rejected" {
-    const allocator = testing.allocator;
-    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/extra_field.json", 1024 * 1024);
+    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/bad/truncated.json", 1024 * 1024);
     defer allocator.free(input);
     var aw: std.io.Writer.Allocating = .init(allocator);
     defer aw.deinit();
-    try testing.expectError(error.UnknownField, run(allocator, input, &aw.writer));
+    try testing.expectError(error.SyntaxError, run(allocator, input, &aw.writer));
+}
+
+test "run: unknown fields are ignored" {
+    const allocator = testing.allocator;
+    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/good/extra_field.json", 1024 * 1024);
+    defer allocator.free(input);
+    var aw: std.io.Writer.Allocating = .init(allocator);
+    defer aw.deinit();
+    try run(allocator, input, &aw.writer);
+    const output = try aw.toOwnedSlice();
+    defer allocator.free(output);
+    const parsed = try std.json.parseFromSlice(zeile.SessionData, allocator, output, .{});
+    defer parsed.deinit();
+    // The unknown field should not appear in the output.
+    try testing.expect(std.mem.indexOf(u8, output, "unknown_extra_field") == null);
 }
 
 test "run: round-trip preserves all data" {
     const allocator = testing.allocator;
-    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/example.json", 1024 * 1024);
+    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/good/complete.json", 1024 * 1024);
     defer allocator.free(input);
     // First pass.
     var aw1: std.io.Writer.Allocating = .init(allocator);
@@ -176,7 +201,18 @@ test "run: round-trip preserves all data" {
 
 test "run: wrong JSON shape produces parse error" {
     const allocator = testing.allocator;
+    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/bad/wrong_shape.json", 1024 * 1024);
+    defer allocator.free(input);
     var aw: std.io.Writer.Allocating = .init(allocator);
     defer aw.deinit();
-    try testing.expectError(error.UnexpectedToken, run(allocator, "[]", &aw.writer));
+    try testing.expectError(error.UnexpectedToken, run(allocator, input, &aw.writer));
+}
+
+test "run: null non-nullable field produces parse error" {
+    const allocator = testing.allocator;
+    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/bad/null_required.json", 1024 * 1024);
+    defer allocator.free(input);
+    var aw: std.io.Writer.Allocating = .init(allocator);
+    defer aw.deinit();
+    try testing.expectError(error.UnexpectedToken, run(allocator, input, &aw.writer));
 }

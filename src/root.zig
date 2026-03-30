@@ -80,11 +80,11 @@ pub const ContextWindow = struct {
     /// 200000 by default, or 1000000 for models with extended context.
     context_window_size: u64,
     /// Pre-calculated percentage of context window used.
-    used_percentage: ?u8,
+    used_percentage: ?u8 = null,
     /// Pre-calculated percentage of context window remaining.
-    remaining_percentage: ?u8,
+    remaining_percentage: ?u8 = null,
     /// Token counts from the last API call.
-    current_usage: ?TokenUsage,
+    current_usage: ?TokenUsage = null,
 };
 
 comptime {
@@ -190,13 +190,13 @@ pub const SessionData = struct {
     /// a fixed threshold regardless of actual context window size.
     exceeds_200k_tokens: bool,
     /// Rate limit information. May be absent.
-    rate_limits: ?RateLimits,
+    rate_limits: ?RateLimits = null,
     /// Vim mode configuration. Present when vim mode is enabled.
-    vim: ?Vim,
+    vim: ?Vim = null,
     /// Agent configuration. Present when running with `--agent`.
-    agent: ?Agent,
+    agent: ?Agent = null,
     /// Git worktree information. Present only during worktree sessions.
-    worktree: ?Worktree,
+    worktree: ?Worktree = null,
 };
 
 comptime {
@@ -205,9 +205,9 @@ comptime {
 
 test SessionData {
     const gpa = std.testing.allocator;
-    const input = try std.fs.cwd().readFileAlloc(gpa, "tests/resources/example.json", 1024 * 1024);
+    const input = try std.fs.cwd().readFileAlloc(gpa, "tests/resources/good/complete.json", 1024 * 1024);
     defer gpa.free(input);
-    const parsed = try std.json.parseFromSlice(SessionData, gpa, input, .{});
+    const parsed = try std.json.parseFromSlice(SessionData, gpa, input, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
 
     const session = parsed.value;
