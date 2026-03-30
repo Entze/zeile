@@ -41,4 +41,4 @@
 - The body focuses und the _why_ and the non-obvious _what_
 - The footer is for references to commits (`Refs: #N`) and attribution
 - If you commit on behalf of the user attribute the agent used to author the code (not necessarily the commit, `Co-authored-by: Claude MODEL VERSION <noreply@anthropic.com>`)
-- If you commit as claude (check the git config) attribute the user (Co-authored-by: Lukas Grassauer <lukas@grassauer.eu>)
+- If you commit as claude (check the git config) attribute the user (`Co-authored-by: Lukas Grassauer <lukas@grassauer.eu>`)
