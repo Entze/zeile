@@ -34,11 +34,11 @@ local checkers = new Mapping<String, Step> {
 local linters = new Mapping<String, Step> {
   ["zig_build"] {
     glob = List("**/*.zig", "**/*.zon")
-    check = "zig build"
+    check = "zig build --summary all"
   }
   ["zig_test"] {
     glob = List("**/*.zig")
-    check = "zig build test"
+    check = "zig build --summary all test"
   }
 }
 
