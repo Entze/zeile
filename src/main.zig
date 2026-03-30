@@ -5,7 +5,7 @@ const zeile = @import("zeile");
 const json_string_len_max = 256;
 
 /// Comptime upper bound on the JSON byte size for a given type,
-/// assuming string values are at most `max_string_len` bytes.
+/// assuming string values are at most `json_string_len_max` bytes.
 fn jsonSizeMax(comptime T: type) comptime_int {
     return switch (@typeInfo(T)) {
         .@"struct" => |s| blk: {
