@@ -253,6 +253,9 @@ fn getField(comptime T: type, comptime prefix: []const u8, data: T, path: []cons
             if (comptime isPrimitive(Inner)) {
                 return wrapPrimitive(FieldType, @field(data, field.name));
             }
+            if (comptime @typeInfo(FieldType) == .optional) {
+                if (@field(data, field.name) == null) return .null;
+            }
             return error.NotPrimitive;
         }
         if (comptime @typeInfo(Inner) == .@"struct") {
@@ -419,6 +422,13 @@ test "get: error.NotPrimitive for optional struct" {
     const parsed = try parseSessionData(gpa, "tests/resources/good/complete.json");
     defer parsed.deinit();
     try std.testing.expectError(error.NotPrimitive, parsed.value.get(".rate_limits"));
+}
+
+test "get: null for null optional struct" {
+    const gpa = std.testing.allocator;
+    const parsed = try parseSessionData(gpa, "tests/resources/good/minimal.json");
+    defer parsed.deinit();
+    try std.testing.expectEqual(Primitive.null, try parsed.value.get(".rate_limits"));
 }
 
 test "get: error.NotPrimitive for nested struct" {
