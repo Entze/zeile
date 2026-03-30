@@ -165,6 +165,17 @@ comptime {
     std.debug.assert(@sizeOf(Worktree) == 80);
 }
 
+/// Leaf value from the `SessionData` struct hierarchy.
+pub const Primitive = union(enum) {
+    null,
+    bool: bool,
+    byte: u8,
+    unsigned_integer: u64,
+    float: f64,
+    string: []const u8,
+    vim_mode: VimMode,
+};
+
 /// Claude Code session data, sent via stdin to status line scripts.
 pub const SessionData = struct {
     /// Current working directory. Same value as `workspace.current_dir`.
@@ -197,10 +208,64 @@ pub const SessionData = struct {
     agent: ?Agent = null,
     /// Git worktree information. Present only during worktree sessions.
     worktree: ?Worktree = null,
+
+    /// Resolve a dot-separated field path to a leaf value.
+    /// Returns `error.FieldNotFound` if the path does not match any field.
+    /// Returns `error.NotPrimitive` if the path resolves to a struct.
+    /// Returns `.@"null"` if any optional in the chain is null at runtime.
+    pub fn get(data: *const SessionData, path: []const u8) error{ FieldNotFound, NotPrimitive }!Primitive {
+        return getField(SessionData, "", data.*, path);
+    }
 };
 
 comptime {
     std.debug.assert(@sizeOf(SessionData) == 432);
+}
+
+fn stripOptional(comptime T: type) type {
+    return if (@typeInfo(T) == .optional) @typeInfo(T).optional.child else T;
+}
+
+fn isPrimitive(comptime T: type) bool {
+    const Inner = stripOptional(T);
+    return Inner == bool or Inner == u8 or Inner == u64 or Inner == f64 or Inner == []const u8 or Inner == VimMode;
+}
+
+fn wrapPrimitive(comptime T: type, value: T) Primitive {
+    if (@typeInfo(T) == .optional) {
+        return if (value) |v| wrapPrimitive(@typeInfo(T).optional.child, v) else .null;
+    }
+    if (T == bool) return .{ .bool = value };
+    if (T == u8) return .{ .byte = value };
+    if (T == u64) return .{ .unsigned_integer = value };
+    if (T == f64) return .{ .float = value };
+    if (T == []const u8) return .{ .string = value };
+    if (T == VimMode) return .{ .vim_mode = value };
+    unreachable;
+}
+
+fn getField(comptime T: type, comptime prefix: []const u8, data: T, path: []const u8) error{ FieldNotFound, NotPrimitive }!Primitive {
+    inline for (@typeInfo(T).@"struct".fields) |field| {
+        const field_path = comptime prefix ++ "." ++ field.name;
+        const FieldType = field.type;
+        const Inner = comptime stripOptional(FieldType);
+        if (std.mem.eql(u8, path, field_path)) {
+            if (comptime isPrimitive(Inner)) {
+                return wrapPrimitive(FieldType, @field(data, field.name));
+            }
+            return error.NotPrimitive;
+        }
+        if (comptime @typeInfo(Inner) == .@"struct") {
+            if (std.mem.startsWith(u8, path, comptime field_path ++ ".")) {
+                if (comptime @typeInfo(FieldType) == .optional) {
+                    const val = @field(data, field.name) orelse return .null;
+                    return getField(Inner, field_path, val, path);
+                }
+                return getField(Inner, field_path, @field(data, field.name), path);
+            }
+        }
+    }
+    return error.FieldNotFound;
 }
 
 test SessionData {
@@ -251,4 +316,114 @@ test SessionData {
     try std.testing.expectEqualStrings("worktree-my-feature", worktree.branch.?);
     try std.testing.expectEqualStrings("/path/to/project", worktree.original_cwd);
     try std.testing.expectEqualStrings("main", worktree.original_branch.?);
+}
+
+fn parseSessionData(gpa: std.mem.Allocator, path: []const u8) !std.json.Parsed(SessionData) {
+    const input = try std.fs.cwd().readFileAlloc(gpa, path, 1024 * 1024);
+    defer gpa.free(input);
+    return std.json.parseFromSlice(SessionData, gpa, input, .{ .ignore_unknown_fields = true, .allocate = .alloc_always });
+}
+
+test "get: string" {
+    const gpa = std.testing.allocator;
+    const parsed = try parseSessionData(gpa, "tests/resources/good/complete.json");
+    defer parsed.deinit();
+    const result = try parsed.value.get(".cwd");
+    try std.testing.expectEqualStrings("/current/working/directory", result.string);
+}
+
+test "get: bool" {
+    const gpa = std.testing.allocator;
+    const parsed = try parseSessionData(gpa, "tests/resources/good/complete.json");
+    defer parsed.deinit();
+    const result = try parsed.value.get(".exceeds_200k_tokens");
+    try std.testing.expectEqual(false, result.bool);
+}
+
+test "get: byte" {
+    const gpa = std.testing.allocator;
+    const parsed = try parseSessionData(gpa, "tests/resources/good/complete.json");
+    defer parsed.deinit();
+    const result = try parsed.value.get(".context_window.used_percentage");
+    try std.testing.expectEqual(@as(u8, 8), result.byte);
+}
+
+test "get: unsigned_integer" {
+    const gpa = std.testing.allocator;
+    const parsed = try parseSessionData(gpa, "tests/resources/good/complete.json");
+    defer parsed.deinit();
+    const result = try parsed.value.get(".cost.total_duration_ms");
+    try std.testing.expectEqual(@as(u64, 45000), result.unsigned_integer);
+}
+
+test "get: float" {
+    const gpa = std.testing.allocator;
+    const parsed = try parseSessionData(gpa, "tests/resources/good/complete.json");
+    defer parsed.deinit();
+    const result = try parsed.value.get(".cost.total_cost_usd");
+    try std.testing.expect(result.float == 0.01234);
+}
+
+test "get: vim_mode" {
+    const gpa = std.testing.allocator;
+    const parsed = try parseSessionData(gpa, "tests/resources/good/complete.json");
+    defer parsed.deinit();
+    const result = try parsed.value.get(".vim.mode");
+    try std.testing.expectEqual(VimMode.NORMAL, result.vim_mode);
+}
+
+test "get: null from optional parent" {
+    const gpa = std.testing.allocator;
+    const parsed = try parseSessionData(gpa, "tests/resources/good/minimal.json");
+    defer parsed.deinit();
+    try std.testing.expectEqual(Primitive.null, try parsed.value.get(".vim.mode"));
+}
+
+test "get: null from nested optional" {
+    const gpa = std.testing.allocator;
+    const parsed = try parseSessionData(gpa, "tests/resources/good/minimal.json");
+    defer parsed.deinit();
+    try std.testing.expectEqual(Primitive.null, try parsed.value.get(".rate_limits.five_hour.used_percentage"));
+}
+
+test "get: null from optional leaf" {
+    const gpa = std.testing.allocator;
+    const parsed = try parseSessionData(gpa, "tests/resources/good/minimal.json");
+    defer parsed.deinit();
+    try std.testing.expectEqual(Primitive.null, try parsed.value.get(".context_window.used_percentage"));
+}
+
+test "get: error.FieldNotFound for unknown top-level field" {
+    const gpa = std.testing.allocator;
+    const parsed = try parseSessionData(gpa, "tests/resources/good/complete.json");
+    defer parsed.deinit();
+    try std.testing.expectError(error.FieldNotFound, parsed.value.get(".nonexistent"));
+}
+
+test "get: error.FieldNotFound for unknown nested field" {
+    const gpa = std.testing.allocator;
+    const parsed = try parseSessionData(gpa, "tests/resources/good/complete.json");
+    defer parsed.deinit();
+    try std.testing.expectError(error.FieldNotFound, parsed.value.get(".model.nonexistent"));
+}
+
+test "get: error.NotPrimitive for non-optional struct" {
+    const gpa = std.testing.allocator;
+    const parsed = try parseSessionData(gpa, "tests/resources/good/complete.json");
+    defer parsed.deinit();
+    try std.testing.expectError(error.NotPrimitive, parsed.value.get(".model"));
+}
+
+test "get: error.NotPrimitive for optional struct" {
+    const gpa = std.testing.allocator;
+    const parsed = try parseSessionData(gpa, "tests/resources/good/complete.json");
+    defer parsed.deinit();
+    try std.testing.expectError(error.NotPrimitive, parsed.value.get(".rate_limits"));
+}
+
+test "get: error.NotPrimitive for nested struct" {
+    const gpa = std.testing.allocator;
+    const parsed = try parseSessionData(gpa, "tests/resources/good/complete.json");
+    defer parsed.deinit();
+    try std.testing.expectError(error.NotPrimitive, parsed.value.get(".context_window.current_usage"));
 }
