@@ -1,5 +1,7 @@
 const std = @import("std");
 
+pub const progressbar = @import("progressbar.zig");
+
 /// Current model identifier and display name.
 pub const Model = struct {
     /// Current model identifier (e.g. "claude-opus-4-6").
