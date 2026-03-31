@@ -84,7 +84,7 @@ jobs:
         if: steps.guard.outputs.skip != 'true'
         env:
           VERSION: ${{ steps.version.outputs.value }}
-        run: git tag --annotate "v$VERSION"
+        run: git tag --annotate --message="Version $VERSION" "v$VERSION"
 
       - name: Build binaries
         if: steps.guard.outputs.skip != 'true'
