@@ -5,6 +5,15 @@ All notable changes to this project will be documented in this file.
 This project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and uses a
 continuous release process.
+## 0.1.2
+
+Improve release and changelog scripts
+
+- Stream RELEASE.txt and CHANGELOG.md line by line instead of reading entirely into memory
+- Move action_validator from checkers to linters in hk config
+- Add unit tests and test fixtures for release and changelog scripts
+- Reorganize test resources into subdirectories
+
 ## 0.1.1
 
 Fix issue in CD pipeline to actually publish releases.

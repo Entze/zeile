@@ -1,7 +1,0 @@
-PATCH
-Improve release and changelog scripts
-
-- Stream RELEASE.txt and CHANGELOG.md line by line instead of reading entirely into memory
-- Move action_validator from checkers to linters in hk config
-- Add unit tests and test fixtures for release and changelog scripts
-- Reorganize test resources into subdirectories
