@@ -35,6 +35,8 @@ jobs:
         with:
           cache: true
       - run: hk check --all
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   lint:
     name: Lint
