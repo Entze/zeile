@@ -1,0 +1,4 @@
+MAJOR
+Breaking change
+
+Multi-paragraph notes.

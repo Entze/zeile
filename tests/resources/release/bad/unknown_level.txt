@@ -1,0 +1,2 @@
+INVALID
+Some release notes

@@ -142,6 +142,24 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_mod_tests.step);
     test_step.dependOn(&run_exe_tests.step);
 
+    const check_release_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("scripts/check_release.zig"),
+            .target = b.graph.host,
+        }),
+    });
+    const run_check_release_tests = b.addRunArtifact(check_release_tests);
+    test_step.dependOn(&run_check_release_tests.step);
+
+    const update_changelog_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("scripts/update_changelog.zig"),
+            .target = b.graph.host,
+        }),
+    });
+    const run_update_changelog_tests = b.addRunArtifact(update_changelog_tests);
+    test_step.dependOn(&run_update_changelog_tests.step);
+
     const check_release_exe = b.addExecutable(.{
         .name = "check-release",
         .root_module = b.createModule(.{

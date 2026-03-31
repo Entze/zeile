@@ -275,7 +275,7 @@ fn getField(comptime T: type, comptime prefix: []const u8, data: *const T, path:
 
 test SessionData {
     const gpa = std.testing.allocator;
-    const input = try std.fs.cwd().readFileAlloc(gpa, "tests/resources/good/complete.json", 1024 * 1024);
+    const input = try std.fs.cwd().readFileAlloc(gpa, "tests/resources/session_data/good/complete.json", 1024 * 1024);
     defer gpa.free(input);
     const parsed = try std.json.parseFromSlice(SessionData, gpa, input, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
@@ -331,7 +331,7 @@ fn parseSessionData(gpa: std.mem.Allocator, path: []const u8) !std.json.Parsed(S
 
 test "get: string" {
     const gpa = std.testing.allocator;
-    const parsed = try parseSessionData(gpa, "tests/resources/good/complete.json");
+    const parsed = try parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
     defer parsed.deinit();
     const result = try parsed.value.get(".cwd");
     try std.testing.expectEqualStrings("/current/working/directory", result.string);
@@ -339,7 +339,7 @@ test "get: string" {
 
 test "get: bool" {
     const gpa = std.testing.allocator;
-    const parsed = try parseSessionData(gpa, "tests/resources/good/complete.json");
+    const parsed = try parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
     defer parsed.deinit();
     const result = try parsed.value.get(".exceeds_200k_tokens");
     try std.testing.expectEqual(false, result.bool);
@@ -347,7 +347,7 @@ test "get: bool" {
 
 test "get: byte" {
     const gpa = std.testing.allocator;
-    const parsed = try parseSessionData(gpa, "tests/resources/good/complete.json");
+    const parsed = try parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
     defer parsed.deinit();
     const result = try parsed.value.get(".context_window.used_percentage");
     try std.testing.expectEqual(@as(u8, 8), result.byte);
@@ -355,7 +355,7 @@ test "get: byte" {
 
 test "get: unsigned_integer" {
     const gpa = std.testing.allocator;
-    const parsed = try parseSessionData(gpa, "tests/resources/good/complete.json");
+    const parsed = try parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
     defer parsed.deinit();
     const result = try parsed.value.get(".cost.total_duration_ms");
     try std.testing.expectEqual(@as(u64, 45000), result.unsigned_integer);
@@ -363,7 +363,7 @@ test "get: unsigned_integer" {
 
 test "get: float" {
     const gpa = std.testing.allocator;
-    const parsed = try parseSessionData(gpa, "tests/resources/good/complete.json");
+    const parsed = try parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
     defer parsed.deinit();
     const result = try parsed.value.get(".cost.total_cost_usd");
     try std.testing.expect(result.float == 0.01234);
@@ -371,7 +371,7 @@ test "get: float" {
 
 test "get: vim_mode" {
     const gpa = std.testing.allocator;
-    const parsed = try parseSessionData(gpa, "tests/resources/good/complete.json");
+    const parsed = try parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
     defer parsed.deinit();
     const result = try parsed.value.get(".vim.mode");
     try std.testing.expectEqual(VimMode.NORMAL, result.vim_mode);
@@ -379,63 +379,63 @@ test "get: vim_mode" {
 
 test "get: null from optional parent" {
     const gpa = std.testing.allocator;
-    const parsed = try parseSessionData(gpa, "tests/resources/good/minimal.json");
+    const parsed = try parseSessionData(gpa, "tests/resources/session_data/good/minimal.json");
     defer parsed.deinit();
     try std.testing.expectEqual(Primitive.null, try parsed.value.get(".vim.mode"));
 }
 
 test "get: null from nested optional" {
     const gpa = std.testing.allocator;
-    const parsed = try parseSessionData(gpa, "tests/resources/good/minimal.json");
+    const parsed = try parseSessionData(gpa, "tests/resources/session_data/good/minimal.json");
     defer parsed.deinit();
     try std.testing.expectEqual(Primitive.null, try parsed.value.get(".rate_limits.five_hour.used_percentage"));
 }
 
 test "get: null from optional leaf" {
     const gpa = std.testing.allocator;
-    const parsed = try parseSessionData(gpa, "tests/resources/good/minimal.json");
+    const parsed = try parseSessionData(gpa, "tests/resources/session_data/good/minimal.json");
     defer parsed.deinit();
     try std.testing.expectEqual(Primitive.null, try parsed.value.get(".context_window.used_percentage"));
 }
 
 test "get: error.FieldNotFound for unknown top-level field" {
     const gpa = std.testing.allocator;
-    const parsed = try parseSessionData(gpa, "tests/resources/good/complete.json");
+    const parsed = try parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
     defer parsed.deinit();
     try std.testing.expectError(error.FieldNotFound, parsed.value.get(".nonexistent"));
 }
 
 test "get: error.FieldNotFound for unknown nested field" {
     const gpa = std.testing.allocator;
-    const parsed = try parseSessionData(gpa, "tests/resources/good/complete.json");
+    const parsed = try parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
     defer parsed.deinit();
     try std.testing.expectError(error.FieldNotFound, parsed.value.get(".model.nonexistent"));
 }
 
 test "get: error.NotPrimitive for non-optional struct" {
     const gpa = std.testing.allocator;
-    const parsed = try parseSessionData(gpa, "tests/resources/good/complete.json");
+    const parsed = try parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
     defer parsed.deinit();
     try std.testing.expectError(error.NotPrimitive, parsed.value.get(".model"));
 }
 
 test "get: error.NotPrimitive for optional struct" {
     const gpa = std.testing.allocator;
-    const parsed = try parseSessionData(gpa, "tests/resources/good/complete.json");
+    const parsed = try parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
     defer parsed.deinit();
     try std.testing.expectError(error.NotPrimitive, parsed.value.get(".rate_limits"));
 }
 
 test "get: null for null optional struct" {
     const gpa = std.testing.allocator;
-    const parsed = try parseSessionData(gpa, "tests/resources/good/minimal.json");
+    const parsed = try parseSessionData(gpa, "tests/resources/session_data/good/minimal.json");
     defer parsed.deinit();
     try std.testing.expectEqual(Primitive.null, try parsed.value.get(".rate_limits"));
 }
 
 test "get: error.NotPrimitive for nested struct" {
     const gpa = std.testing.allocator;
-    const parsed = try parseSessionData(gpa, "tests/resources/good/complete.json");
+    const parsed = try parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
     defer parsed.deinit();
     try std.testing.expectError(error.NotPrimitive, parsed.value.get(".context_window.current_usage"));
 }
