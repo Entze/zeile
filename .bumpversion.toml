@@ -1,0 +1,10 @@
+[tool.bumpversion]
+current_version = "0.0.0"
+commit = false
+tag = false
+allow_dirty = true
+
+[[tool.bumpversion.files]]
+filename = "build.zig.zon"
+search = '.version = "{current_version}"'
+replace = '.version = "{new_version}"'
