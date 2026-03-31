@@ -15,46 +15,95 @@ pub fn main() void {
     }
     const version = args[1];
 
-    const release_contents = std.fs.cwd().readFileAlloc(allocator, "RELEASE.txt", 1024 * 1024) catch |err| {
-        fatalErr("could not read RELEASE.txt", err);
+    // Stream RELEASE.txt: skip first line, collect remaining as summary.
+    const release_file = std.fs.cwd().openFile("RELEASE.txt", .{}) catch |err| {
+        fatalErr("could not open RELEASE.txt", err);
     };
-    defer allocator.free(release_contents);
+    defer release_file.close();
 
-    const summary = extractSummary(release_contents) orelse {
+    var release_read_buf: [4096]u8 = undefined;
+    var release_reader = release_file.reader(&release_read_buf);
+    const rr = &release_reader.interface;
+
+    // Skip the first line (bump level).
+    _ = rr.takeDelimiter('\n') catch {
+        fatal("could not read RELEASE.txt");
+    } orelse fatal("RELEASE.txt is empty");
+
+    // Collect remaining lines into a buffer.
+    var summary_buf: std.ArrayList(u8) = .{};
+    defer summary_buf.deinit(allocator);
+    while (rr.takeDelimiter('\n') catch {
+        fatal("could not read RELEASE.txt");
+    }) |line| {
+        if (summary_buf.items.len > 0) summary_buf.append(allocator, '\n') catch fatal("out of memory");
+        summary_buf.appendSlice(allocator, line) catch fatal("out of memory");
+    }
+    const summary = std.mem.trim(u8, summary_buf.items, &std.ascii.whitespace);
+    if (summary.len == 0) {
         fatal("RELEASE.txt has no summary (need at least 2 lines)");
+    }
+
+    // Stream CHANGELOG.md line-by-line, inserting new section before first H2.
+    const cwd = std.fs.cwd();
+    const changelog_in = cwd.openFile("CHANGELOG.md", .{}) catch |err| {
+        fatalErr("could not open CHANGELOG.md", err);
     };
 
-    const changelog = std.fs.cwd().readFileAlloc(allocator, "CHANGELOG.md", 10 * 1024 * 1024) catch |err| {
-        fatalErr("could not read CHANGELOG.md", err);
+    const tmp_path = "CHANGELOG.md.tmp";
+    const changelog_out = cwd.createFile(tmp_path, .{}) catch |err| {
+        fatalErr("could not create temp file", err);
     };
-    defer allocator.free(changelog);
+    errdefer cwd.deleteFile(tmp_path) catch {};
 
-    const insert_pos = findFirstH2(changelog) orelse changelog.len;
+    {
+        defer changelog_in.close();
 
-    const new_section = std.fmt.allocPrint(allocator, "## {s}\n\n{s}\n\n", .{ version, summary }) catch {
-        fatal("out of memory");
+        var ch_read_buf: [8192]u8 = undefined;
+        var ch_reader = changelog_in.reader(&ch_read_buf);
+        const cr = &ch_reader.interface;
+
+        var ch_write_buf: [8192]u8 = undefined;
+        var ch_writer = changelog_out.writerStreaming(&ch_write_buf);
+        const cw = &ch_writer.interface;
+        defer {
+            cw.flush() catch {};
+            changelog_out.close();
+        }
+
+        var inserted = false;
+
+        while (cr.takeDelimiter('\n') catch {
+            fatal("could not read CHANGELOG.md");
+        }) |line| {
+            const trimmed_line = std.mem.trimRight(u8, line, "\r");
+            if (!inserted and std.mem.startsWith(u8, trimmed_line, "## ")) {
+                cw.print("## {s}\n\n{s}\n\n", .{ version, summary }) catch |err| {
+                    fatalErr("could not write temp file", err);
+                };
+                inserted = true;
+            }
+            cw.writeAll(line) catch |err| {
+                fatalErr("could not write temp file", err);
+            };
+            cw.writeByte('\n') catch |err| {
+                fatalErr("could not write temp file", err);
+            };
+        }
+
+        if (!inserted) {
+            cw.print("## {s}\n\n{s}\n\n", .{ version, summary }) catch |err| {
+                fatalErr("could not write temp file", err);
+            };
+        }
+    }
+
+    cwd.rename(tmp_path, "CHANGELOG.md") catch |err| {
+        fatalErr("could not rename temp file", err);
     };
-    defer allocator.free(new_section);
 
-    const result = std.mem.concat(allocator, u8, &.{
-        changelog[0..insert_pos],
-        new_section,
-        changelog[insert_pos..],
-    }) catch {
-        fatal("out of memory");
-    };
-    defer allocator.free(result);
-
-    const file = std.fs.cwd().createFile("CHANGELOG.md", .{}) catch |err| {
-        fatalErr("could not create CHANGELOG.md", err);
-    };
-    defer file.close();
-    file.writeAll(result) catch |err| {
-        fatalErr("could not write CHANGELOG.md", err);
-    };
-
-    var buf: [128]u8 = undefined;
-    var w = std.fs.File.stdout().writerStreaming(&buf);
+    var out_buf: [128]u8 = undefined;
+    var w = std.fs.File.stdout().writerStreaming(&out_buf);
     w.interface.print("Updated CHANGELOG.md with version {s}\n", .{version}) catch {};
     w.interface.flush() catch {};
 }

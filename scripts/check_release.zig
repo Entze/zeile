@@ -1,19 +1,18 @@
 const std = @import("std");
 
 pub fn main() void {
-    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .init;
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
-
-    const contents = std.fs.cwd().readFileAlloc(allocator, "RELEASE.txt", 1024 * 1024) catch |err| {
-        fatalErr("could not read RELEASE.txt", err);
+    const file = std.fs.cwd().openFile("RELEASE.txt", .{}) catch |err| {
+        fatalErr("could not open RELEASE.txt", err);
     };
-    defer allocator.free(contents);
+    defer file.close();
 
-    const first_line = if (std.mem.indexOfScalar(u8, contents, '\n')) |idx|
-        contents[0..idx]
-    else
-        contents;
+    var read_buf: [4096]u8 = undefined;
+    var reader = file.reader(&read_buf);
+    const r = &reader.interface;
+
+    const first_line = r.takeDelimiter('\n') catch {
+        fatal("could not read RELEASE.txt");
+    } orelse fatal("RELEASE.txt is empty");
 
     const trimmed = std.mem.trim(u8, first_line, &std.ascii.whitespace);
 
@@ -29,12 +28,18 @@ pub fn main() void {
         std.process.exit(1);
     }
 
-    const after_first_line = if (std.mem.indexOfScalar(u8, contents, '\n')) |idx|
-        contents[idx + 1 ..]
-    else
-        "";
-    const notes = std.mem.trim(u8, after_first_line, &std.ascii.whitespace);
-    if (notes.len == 0) {
+    var found_notes = false;
+    while (r.takeDelimiter('\n') catch {
+        fatal("could not read RELEASE.txt");
+    }) |line| {
+        const line_trimmed = std.mem.trim(u8, line, &std.ascii.whitespace);
+        if (line_trimmed.len > 0) {
+            found_notes = true;
+            break;
+        }
+    }
+
+    if (!found_notes) {
         fatal("RELEASE.txt has no release notes after the bump level");
     }
 
