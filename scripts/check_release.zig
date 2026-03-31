@@ -29,6 +29,15 @@ pub fn main() void {
         std.process.exit(1);
     }
 
+    const after_first_line = if (std.mem.indexOfScalar(u8, contents, '\n')) |idx|
+        contents[idx + 1 ..]
+    else
+        "";
+    const notes = std.mem.trim(u8, after_first_line, &std.ascii.whitespace);
+    if (notes.len == 0) {
+        fatal("RELEASE.txt has no release notes after the bump level");
+    }
+
     var buf: [64]u8 = undefined;
     var w = std.fs.File.stdout().writerStreaming(&buf);
     w.interface.print("RELEASE.txt is valid\n", .{}) catch {};

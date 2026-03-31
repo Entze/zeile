@@ -66,7 +66,7 @@ fn extractSummary(contents: []const u8) ?[]const u8 {
     else
         return null;
 
-    const trimmed = std.mem.trimRight(u8, after_first_line, &std.ascii.whitespace);
+    const trimmed = std.mem.trim(u8, after_first_line, &std.ascii.whitespace);
     if (trimmed.len == 0) return null;
     return trimmed;
 }

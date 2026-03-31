@@ -9,6 +9,8 @@ on:
       - "**/*.zon"
       - "hk.pkl"
       - ".github/workflows/ci.yml"
+      - "RELEASE.txt"
+      - "CHANGELOG.md"
 
 permissions: {}
 

@@ -13,6 +13,7 @@ concurrency:
 jobs:
   release:
     name: Release
+    if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -85,10 +86,6 @@ jobs:
           VERSION: ${{ steps.version.outputs.value }}
         run: git tag "v$VERSION"
 
-      - name: Push
-        if: steps.guard.outputs.skip != 'true'
-        run: git push origin main --follow-tags
-
       - name: Build binaries
         if: steps.guard.outputs.skip != 'true'
         run: |
@@ -100,6 +97,10 @@ jobs:
         run: |
           cp zig-out/x86_64-linux-gnu/bin/zeile zeile-x86_64-linux-gnu
           cp zig-out/x86_64-linux-musl/bin/zeile zeile-x86_64-linux-musl
+
+      - name: Push
+        if: steps.guard.outputs.skip != 'true'
+        run: git push origin main --follow-tags
 
       - name: Create GitHub release
         if: steps.guard.outputs.skip != 'true'
