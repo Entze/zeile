@@ -20,11 +20,6 @@ local formatters = new Mapping<String, Step> {
 }
 
 local checkers = new Mapping<String, Step> {
-  ["action_validator"] {
-    depends = List("yamlfmt")
-    glob = List(".github/workflows/*.yml", ".github/workflows/*.yaml")
-    check = "action-validator {{files}}"
-  }
   ["pkl"] = Builtins.pkl
   ["actionlint"] = (Builtins.actionlint) {
     depends = List("newlines", "trailing_whitespace")
@@ -34,6 +29,11 @@ local checkers = new Mapping<String, Step> {
 }
 
 local linters = new Mapping<String, Step> {
+  ["action_validator"] {
+    depends = List("yamlfmt")
+    glob = List(".github/workflows/*.yml", ".github/workflows/*.yaml")
+    check = "action-validator {{files}}"
+  }
   ["zig_build"] {
     glob = List("**/*.zig", "**/*.zon")
     check = "zig build --summary all"
