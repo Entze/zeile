@@ -13,11 +13,6 @@ const testing = std.testing;
 /// comptime-known length of `prefix.len + bar_width + postfix.len`.
 ///
 /// `progress_pct` is clamped to [0, 100]. NaN is treated as 0.
-///
-/// ```
-/// const bar = format(3, "[", ' ', &.{ "-", "=", "#" }, "]", 48.0);
-/// // bar == "[#- ]".*
-/// ```
 pub fn format(
     comptime bar_width: comptime_int,
     comptime prefix: []const u8,
@@ -41,8 +36,14 @@ pub fn format(
         0.0 // NaN
     else
         @min(@max(progress_pct, 0.0), 100.0);
+    std.debug.assert(0.0 <= clamped);
+    std.debug.assert(clamped <= 100.0);
 
-    const step: usize = @intFromFloat(clamped / 100.0 * @as(f64, total_steps));
+    const step: usize = @min(
+        @divFloor(@as(usize, @intFromFloat(clamped * @as(f64, total_steps))), 100),
+        total_steps,
+    );
+    std.debug.assert(step <= 100);
 
     const filled: usize = step / segments.len;
     const partial: usize = step % segments.len;
@@ -81,6 +82,11 @@ pub fn format(
     }
 
     return buf;
+}
+
+test format {
+    const bar = format(3, "[", ' ', &.{ "-", "=", "#" }, "]", 48.0);
+    try testing.expectEqualStrings("[#- ]", &bar);
 }
 
 test "all blank at zero percent" {
@@ -148,13 +154,19 @@ test "single position bar" {
     try testing.expectEqualStrings("[-]", &result);
 }
 
-test "exact boundary transitions" {
-    // bar_width=3, segments=3 → 9 total steps, each step = 100/9 ≈ 11.11%
-    // At exactly 1/9 = 11.11...% → step 1
-    const at_boundary = format(3, "[", ' ', &.{ "-", "=", "#" }, "]", 100.0 / 9.0);
-    try testing.expectEqualStrings("[-  ]", &at_boundary);
+test "segment boundary transitions" {
+    // bar_width=4, segments=4 → 16 total steps, each step = 6.25% (exact in f64)
+    // Boundary at 6.25%: test just below and just above
+    const below_first = format(4, "[", ' ', &.{ "-", "=", "#", "X" }, "]", 6.0);
+    try testing.expectEqualStrings("[    ]", &below_first);
 
-    // At exactly 3/9 = 33.33...% → step 3 → first position fully filled
-    const at_third = format(3, "[", ' ', &.{ "-", "=", "#" }, "]", 100.0 / 3.0);
-    try testing.expectEqualStrings("[#  ]", &at_third);
+    const above_first = format(4, "[", ' ', &.{ "-", "=", "#", "X" }, "]", 6.5);
+    try testing.expectEqualStrings("[-   ]", &above_first);
+
+    // Boundary at 25.0%: first position complete, test just below and just above
+    const below_complete = format(4, "[", ' ', &.{ "-", "=", "#", "X" }, "]", 24.5);
+    try testing.expectEqualStrings("[#   ]", &below_complete);
+
+    const above_complete = format(4, "[", ' ', &.{ "-", "=", "#", "X" }, "]", 25.5);
+    try testing.expectEqualStrings("[X   ]", &above_complete);
 }
