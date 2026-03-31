@@ -5,8 +5,8 @@ pub fn main() void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    const contents = std.fs.cwd().readFileAlloc(allocator, "RELEASE.txt", 1024 * 1024) catch {
-        fatal("RELEASE.txt does not exist or could not be read");
+    const contents = std.fs.cwd().readFileAlloc(allocator, "RELEASE.txt", 1024 * 1024) catch |err| {
+        fatalErr("could not read RELEASE.txt", err);
     };
     defer allocator.free(contents);
 
@@ -54,6 +54,14 @@ fn fatal(msg: []const u8) noreturn {
     var buf: [256]u8 = undefined;
     var w = std.fs.File.stderr().writerStreaming(&buf);
     w.interface.print("error: {s}\n", .{msg}) catch {};
+    w.interface.flush() catch {};
+    std.process.exit(1);
+}
+
+fn fatalErr(msg: []const u8, err: anyerror) noreturn {
+    var buf: [256]u8 = undefined;
+    var w = std.fs.File.stderr().writerStreaming(&buf);
+    w.interface.print("error: {s}: {s}\n", .{ msg, @errorName(err) }) catch {};
     w.interface.flush() catch {};
     std.process.exit(1);
 }

@@ -15,8 +15,8 @@ pub fn main() void {
     }
     const version = args[1];
 
-    const release_contents = std.fs.cwd().readFileAlloc(allocator, "RELEASE.txt", 1024 * 1024) catch {
-        fatal("could not read RELEASE.txt");
+    const release_contents = std.fs.cwd().readFileAlloc(allocator, "RELEASE.txt", 1024 * 1024) catch |err| {
+        fatalErr("could not read RELEASE.txt", err);
     };
     defer allocator.free(release_contents);
 
@@ -24,8 +24,8 @@ pub fn main() void {
         fatal("RELEASE.txt has no summary (need at least 2 lines)");
     };
 
-    const changelog = std.fs.cwd().readFileAlloc(allocator, "CHANGELOG.md", 10 * 1024 * 1024) catch {
-        fatal("could not read CHANGELOG.md");
+    const changelog = std.fs.cwd().readFileAlloc(allocator, "CHANGELOG.md", 10 * 1024 * 1024) catch |err| {
+        fatalErr("could not read CHANGELOG.md", err);
     };
     defer allocator.free(changelog);
 
@@ -45,12 +45,12 @@ pub fn main() void {
     };
     defer allocator.free(result);
 
-    const file = std.fs.cwd().createFile("CHANGELOG.md", .{}) catch {
-        fatal("could not write CHANGELOG.md");
+    const file = std.fs.cwd().createFile("CHANGELOG.md", .{}) catch |err| {
+        fatalErr("could not create CHANGELOG.md", err);
     };
     defer file.close();
-    file.writeAll(result) catch {
-        fatal("could not write CHANGELOG.md");
+    file.writeAll(result) catch |err| {
+        fatalErr("could not write CHANGELOG.md", err);
     };
 
     var buf: [128]u8 = undefined;
@@ -91,6 +91,14 @@ fn fatal(msg: []const u8) noreturn {
     var buf: [256]u8 = undefined;
     var w = std.fs.File.stderr().writerStreaming(&buf);
     w.interface.print("error: {s}\n", .{msg}) catch {};
+    w.interface.flush() catch {};
+    std.process.exit(1);
+}
+
+fn fatalErr(msg: []const u8, err: anyerror) noreturn {
+    var buf: [256]u8 = undefined;
+    var w = std.fs.File.stderr().writerStreaming(&buf);
+    w.interface.print("error: {s}: {s}\n", .{ msg, @errorName(err) }) catch {};
     w.interface.flush() catch {};
     std.process.exit(1);
 }
