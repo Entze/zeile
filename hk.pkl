@@ -11,9 +11,11 @@ local formatters = new Mapping<String, Step> {
   ["mise"] = Builtins.mise
   ["trailing_whitespace"] = (Builtins.trailing_whitespace) {
     types = List("text")
+    exclude = List("tests/resources/release/**", "tests/resources/changelog/**")
   }
   ["newlines"] = (Builtins.newlines) {
     types = List("text")
+    exclude = List("tests/resources/release/**", "tests/resources/changelog/**")
   }
 }
 
