@@ -73,7 +73,42 @@ pub fn main() void {
 fn run(allocator: std.mem.Allocator, input: []const u8, writer: *std.io.Writer) !void {
     const parsed = try std.json.parseFromSlice(zeile.SessionData, allocator, input, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
-    try std.json.Stringify.value(parsed.value, .{ .whitespace = .indent_2 }, writer);
+    const red = "\x1B[31m";
+    const yellow = "\x1B[33m";
+    const green = "\x1B[32m";
+    const reset = "\x1B[0m";
+    const five_hour_used_percentage = if (parsed.value.rate_limits != null and parsed.value.rate_limits.?.five_hour != null) parsed.value.rate_limits.?.five_hour.?.used_percentage else 0.0;
+    const five_hour_resets_at: i64 = if (parsed.value.rate_limits != null and parsed.value.rate_limits.?.five_hour != null) @intCast(parsed.value.rate_limits.?.five_hour.?.resets_at) else 0;
+    const five_hour_resets_in_ns: i64 = @min(@max(0, five_hour_resets_at - std.time.milliTimestamp()) * 1000, 18_000_000_000_000);
+    const five_hour_bar = zeile.progressbar.format(10, "[", ' ', &.{ ".", "-", "/", "|", "\\", "=", ">", "+", "x", "#" }, "]", five_hour_used_percentage);
+    var five_hour_bar_color = green;
+    if (five_hour_used_percentage >= 66.6) {
+        five_hour_bar_color = yellow;
+    } else if (five_hour_used_percentage >= 88.8) {
+        five_hour_bar_color = red;
+    }
+    const seven_day_resets_at: i64 = if (parsed.value.rate_limits != null and parsed.value.rate_limits.?.seven_day != null) @intCast(parsed.value.rate_limits.?.seven_day.?.resets_at) else 0;
+    const seven_day_resets_in_ns: i64 = @min(@max(0, seven_day_resets_at - std.time.milliTimestamp()) * 1000, 604_800_000_000_000);
+    const seven_day_used_percentage = if (parsed.value.rate_limits != null and parsed.value.rate_limits.?.seven_day != null) parsed.value.rate_limits.?.seven_day.?.used_percentage else 0.0;
+    const seven_day_bar = zeile.progressbar.format(10, "[", ' ', &.{ ".", "-", "/", "|", "\\", "=", ">", "+", "x", "#" }, "]", seven_day_used_percentage);
+
+    var seven_day_bar_color = green;
+    if (seven_day_used_percentage >= 75.0) {
+        seven_day_bar_color = yellow;
+    } else if (seven_day_used_percentage >= 90.0) {
+        seven_day_bar_color = red;
+    }
+    const ctx_percentage = parsed.value.context_window.used_percentage orelse 0;
+    const ctx_bar = zeile.progressbar.format(10, "[", ' ', &.{ ".", "-", "/", "|", "\\", "=", ">", "^", "<", "v", "+", "x", "#" }, "]", @floatFromInt(ctx_percentage));
+
+    var ctx_bar_color = green;
+    if (ctx_percentage >= 50.0) {
+        ctx_bar_color = yellow;
+    } else if (ctx_percentage >= 65.0) {
+        ctx_bar_color = red;
+    }
+    const args = .{ parsed.value.model.display_name, parsed.value.cost.total_cost_usd, green, parsed.value.cost.total_lines_added, red, parsed.value.cost.total_lines_removed, reset, five_hour_bar_color, five_hour_bar, reset, five_hour_used_percentage, five_hour_resets_in_ns, seven_day_bar_color, seven_day_bar, reset, seven_day_used_percentage, seven_day_resets_in_ns, ctx_bar_color, ctx_bar, reset, ctx_percentage };
+    try writer.print("Claude {s} [${d:.2}] [{s}+{d}{s}-{d}{s}]\n[5D: {s}{s}{s} {d: >5.1}% {D}] [7D: {s}{s}{s} {d: >5.1}% {D}] [CTX: {s}{s}{s} {d: >3}%]", args);
     try writer.writeByte('\n');
 }
 
