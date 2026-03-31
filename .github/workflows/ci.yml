@@ -9,6 +9,7 @@ on:
       - "**/*.zon"
       - "hk.pkl"
       - ".github/workflows/ci.yml"
+      - ".github/workflows/cd.yml"
       - "RELEASE.txt"
       - "CHANGELOG.md"
 
