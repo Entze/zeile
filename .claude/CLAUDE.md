@@ -3,6 +3,7 @@
 - Use `mise exec -- hk fix` to format and apply fixes suggested by linters
 - Use `mise exec -- hk check` to present issues that have to be fixed manually
 - Use `mise exec -- hk run lint` to run checks that are executed during CI for PR QA
+- Use `mise exec -- zig build --summary all test` to run the unit tests
 - `zig std` does not emit any information, instead it starts a webserver and opens the browser, you cannot use it for reference. Directly use the zig source code instead.
 
 ## Style Guide
@@ -28,6 +29,8 @@
 - Duplicating information onto multiple similar functions is encouraged because it helps IDEs and other tools provide better help text.
 - Use the word **assume** to indicate invariants that cause unchecked Illegal Behavior when violated.
 - Use the word **assert** to indicate invariants that cause safety-checked Illegal Behavior when violated.
+- Write usage examples as doctests (`test <identifier> { ... }` named after the declaration) rather than
+  code blocks inside `///` doc comments. Doctests are compiled and run, so they stay correct.
 
 ### Commit Messages
 
