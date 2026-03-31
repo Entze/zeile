@@ -87,6 +87,69 @@ fn findFirstH2(changelog: []const u8) ?usize {
     return null;
 }
 
+const testing = std.testing;
+
+test "extractSummary: multi-line content" {
+    const result = extractSummary("PATCH\nFix a small bug\nMore details").?;
+    try testing.expectEqualStrings("Fix a small bug\nMore details", result);
+}
+
+test "extractSummary: single line returns null" {
+    try testing.expect(extractSummary("PATCH") == null);
+}
+
+test "extractSummary: empty after first line returns null" {
+    try testing.expect(extractSummary("PATCH\n") == null);
+}
+
+test "extractSummary: whitespace-only after first line returns null" {
+    try testing.expect(extractSummary("PATCH\n   \n  \n") == null);
+}
+
+test "extractSummary: trims leading and trailing whitespace" {
+    const result = extractSummary("MINOR\n  Fix something  \n").?;
+    try testing.expectEqualStrings("Fix something", result);
+}
+
+test "extractSummary: handles CRLF" {
+    const result = extractSummary("PATCH\r\nFix something\r\n").?;
+    try testing.expectEqualStrings("Fix something", result);
+}
+
+test "findFirstH2: at start of file" {
+    try testing.expectEqual(@as(?usize, 0), findFirstH2("## 1.0.0\n\nNotes."));
+}
+
+test "findFirstH2: after preamble" {
+    const input = "# Changelog\n\nPreamble text.\n## 1.0.0\n";
+    try testing.expectEqual(@as(?usize, 28), findFirstH2(input));
+}
+
+test "findFirstH2: no H2 returns null" {
+    try testing.expect(findFirstH2("# Changelog\n\nJust text.") == null);
+}
+
+test "findFirstH2: H3 not matched" {
+    try testing.expect(findFirstH2("### Not an H2\n") == null);
+}
+
+test "findFirstH2: multiple H2s returns first" {
+    const input = "Preamble\n## 1.0.0\n\n## 0.9.0\n";
+    try testing.expectEqual(@as(?usize, 9), findFirstH2(input));
+}
+
+test "findFirstH2: empty string returns null" {
+    try testing.expect(findFirstH2("") == null);
+}
+
+test "findFirstH2: no space after hashes not matched" {
+    try testing.expect(findFirstH2("##noSpace\n") == null);
+}
+
+test "findFirstH2: hashes mid-line not matched" {
+    try testing.expect(findFirstH2("some text ## heading\n") == null);
+}
+
 fn fatal(msg: []const u8) noreturn {
     var buf: [256]u8 = undefined;
     var w = std.fs.File.stderr().writerStreaming(&buf);
