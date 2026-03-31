@@ -43,7 +43,7 @@ pub fn format(
         @divFloor(@as(usize, @intFromFloat(clamped * @as(f64, total_steps))), 100),
         total_steps,
     );
-    std.debug.assert(step <= 100);
+    std.debug.assert(step <= total_steps);
 
     const filled: usize = step / segments.len;
     const partial: usize = step % segments.len;
