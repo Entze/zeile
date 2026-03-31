@@ -78,7 +78,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add build.zig.zon .bumpversion.toml CHANGELOG.md RELEASE.txt
-          git commit -m "Release v$VERSION"
+          git commit --message="Release v$VERSION"
 
       - name: Tag release
         if: steps.guard.outputs.skip != 'true'
