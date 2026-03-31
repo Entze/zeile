@@ -44,10 +44,10 @@ pub fn main() void {
     const allocator = gpa.allocator();
 
     const io_buf = allocator.create([io_buf_size]u8) catch
-        std.debug.panic("error: failed to allocate {d} bytes for the io buffer", .{io_buf_size});
+        std.debug.panic("error: failed to allocate {Bi} for the io buffer", .{io_buf_size});
     defer allocator.destroy(io_buf);
     const input_buf = allocator.alloc(u8, input_bytes_max) catch
-        std.debug.panic("error: failed to allocate {d} bytes for the input buffer", .{input_bytes_max});
+        std.debug.panic("error: failed to allocate {Bi} for the input buffer", .{input_bytes_max});
     defer allocator.free(input_buf);
 
     const input_len = std.fs.File.stdin().readAll(input_buf) catch |err| {
