@@ -116,7 +116,7 @@ const testing = std.testing;
 
 test "run: complete input succeeds" {
     const allocator = testing.allocator;
-    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/good/complete.json", 1024 * 1024);
+    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/session_data/good/complete.json", 1024 * 1024);
     defer allocator.free(input);
     var aw: std.io.Writer.Allocating = .init(allocator);
     defer aw.deinit();
@@ -125,7 +125,7 @@ test "run: complete input succeeds" {
 
 test "run: explicit null optional fields succeed" {
     const allocator = testing.allocator;
-    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/good/minimal.json", 1024 * 1024);
+    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/session_data/good/minimal.json", 1024 * 1024);
     defer allocator.free(input);
     var aw: std.io.Writer.Allocating = .init(allocator);
     defer aw.deinit();
@@ -134,7 +134,7 @@ test "run: explicit null optional fields succeed" {
 
 test "run: omitted optional fields succeed" {
     const allocator = testing.allocator;
-    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/good/missing_optional_fields.json", 1024 * 1024);
+    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/session_data/good/missing_optional_fields.json", 1024 * 1024);
     defer allocator.free(input);
     var aw: std.io.Writer.Allocating = .init(allocator);
     defer aw.deinit();
@@ -143,7 +143,7 @@ test "run: omitted optional fields succeed" {
 
 test "run: empty stdin produces parse error" {
     const allocator = testing.allocator;
-    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/bad/empty.json", 1024 * 1024);
+    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/session_data/bad/empty.json", 1024 * 1024);
     defer allocator.free(input);
     var aw: std.io.Writer.Allocating = .init(allocator);
     defer aw.deinit();
@@ -152,7 +152,7 @@ test "run: empty stdin produces parse error" {
 
 test "run: invalid JSON produces parse error" {
     const allocator = testing.allocator;
-    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/bad/invalid.json", 1024 * 1024);
+    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/session_data/bad/invalid.json", 1024 * 1024);
     defer allocator.free(input);
     var aw: std.io.Writer.Allocating = .init(allocator);
     defer aw.deinit();
@@ -161,7 +161,7 @@ test "run: invalid JSON produces parse error" {
 
 test "run: truncated JSON produces parse error" {
     const allocator = testing.allocator;
-    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/bad/truncated.json", 1024 * 1024);
+    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/session_data/bad/truncated.json", 1024 * 1024);
     defer allocator.free(input);
     var aw: std.io.Writer.Allocating = .init(allocator);
     defer aw.deinit();
@@ -170,7 +170,7 @@ test "run: truncated JSON produces parse error" {
 
 test "run: unknown fields succeed" {
     const allocator = testing.allocator;
-    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/good/extra_field.json", 1024 * 1024);
+    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/session_data/good/extra_field.json", 1024 * 1024);
     defer allocator.free(input);
     var aw: std.io.Writer.Allocating = .init(allocator);
     defer aw.deinit();
@@ -179,7 +179,7 @@ test "run: unknown fields succeed" {
 
 test "run: wrong JSON shape produces parse error" {
     const allocator = testing.allocator;
-    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/bad/wrong_shape.json", 1024 * 1024);
+    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/session_data/bad/wrong_shape.json", 1024 * 1024);
     defer allocator.free(input);
     var aw: std.io.Writer.Allocating = .init(allocator);
     defer aw.deinit();
@@ -188,7 +188,7 @@ test "run: wrong JSON shape produces parse error" {
 
 test "run: null non-nullable field produces parse error" {
     const allocator = testing.allocator;
-    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/bad/null_required.json", 1024 * 1024);
+    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/session_data/bad/null_required.json", 1024 * 1024);
     defer allocator.free(input);
     var aw: std.io.Writer.Allocating = .init(allocator);
     defer aw.deinit();
