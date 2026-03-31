@@ -79,7 +79,7 @@ fn run(allocator: std.mem.Allocator, input: []const u8, writer: *std.io.Writer) 
     const reset = "\x1B[0m";
     const five_hour_used_percentage = if (parsed.value.rate_limits != null and parsed.value.rate_limits.?.five_hour != null) parsed.value.rate_limits.?.five_hour.?.used_percentage else 0.0;
     const five_hour_resets_at: i64 = if (parsed.value.rate_limits != null and parsed.value.rate_limits.?.five_hour != null) @intCast(parsed.value.rate_limits.?.five_hour.?.resets_at) else 0;
-    const five_hour_resets_in_ns: i64 = @min(@max(0, five_hour_resets_at - std.time.milliTimestamp()) * 1000, 18_000_000_000_000);
+    const five_hour_resets_in_ns: i64 = @min(@max(0, five_hour_resets_at - std.time.timestamp()) * std.time.ns_per_s, 5 * std.time.ns_per_hour);
     const five_hour_bar = zeile.progressbar.format(10, "[", ' ', &.{ ".", "-", "/", "|", "\\", "=", ">", "+", "x", "#" }, "]", five_hour_used_percentage);
     var five_hour_bar_color = green;
     if (five_hour_used_percentage >= 88.8) {
@@ -88,7 +88,7 @@ fn run(allocator: std.mem.Allocator, input: []const u8, writer: *std.io.Writer) 
         five_hour_bar_color = yellow;
     }
     const seven_day_resets_at: i64 = if (parsed.value.rate_limits != null and parsed.value.rate_limits.?.seven_day != null) @intCast(parsed.value.rate_limits.?.seven_day.?.resets_at) else 0;
-    const seven_day_resets_in_ns: i64 = @min(@max(0, seven_day_resets_at - std.time.milliTimestamp()) * 1000, 604_800_000_000_000);
+    const seven_day_resets_in_ns: i64 = @min(@max(0, seven_day_resets_at - std.time.timestamp()) * std.time.ns_per_s, 7 * std.time.ns_per_week);
     const seven_day_used_percentage = if (parsed.value.rate_limits != null and parsed.value.rate_limits.?.seven_day != null) parsed.value.rate_limits.?.seven_day.?.used_percentage else 0.0;
     const seven_day_bar = zeile.progressbar.format(10, "[", ' ', &.{ ".", "-", "/", "|", "\\", "=", ">", "+", "x", "#" }, "]", seven_day_used_percentage);
 
