@@ -40,10 +40,6 @@ jobs:
         id: level
         run: echo "value=$(head --lines 1 RELEASE.txt | tr -d '[:space:]')" >> "$GITHUB_OUTPUT"
 
-      - name: Install bump-my-version
-        if: steps.guard.outputs.skip != 'true'
-        run: mise use --pin "pipx:bump-my-version@latest"
-
       - name: Bump version
         if: steps.guard.outputs.skip != 'true'
         env:
@@ -68,6 +64,10 @@ jobs:
       - name: Remove RELEASE.txt
         if: steps.guard.outputs.skip != 'true'
         run: rm RELEASE.txt
+
+      - name: Run formatters
+        if: steps.guard.outputs.skip != 'true'
+        run: hk run fix
 
       - name: Commit release
         if: steps.guard.outputs.skip != 'true'
