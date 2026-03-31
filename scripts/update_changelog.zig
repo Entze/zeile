@@ -37,7 +37,7 @@ pub fn main() void {
         fatal("could not read RELEASE.txt");
     }) |line| {
         if (summary_buf.items.len > 0) summary_buf.append(allocator, '\n') catch fatal("out of memory");
-        summary_buf.appendSlice(allocator, line) catch fatal("out of memory");
+        summary_buf.appendSlice(allocator, std.mem.trimRight(u8, line, "\r")) catch fatal("out of memory");
     }
     const summary = std.mem.trim(u8, summary_buf.items, &std.ascii.whitespace);
     if (summary.len == 0) {
@@ -83,7 +83,7 @@ pub fn main() void {
                 };
                 inserted = true;
             }
-            cw.writeAll(line) catch |err| {
+            cw.writeAll(trimmed_line) catch |err| {
                 fatalErr("could not write temp file", err);
             };
             cw.writeByte('\n') catch |err| {
