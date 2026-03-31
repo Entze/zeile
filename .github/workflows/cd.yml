@@ -1,0 +1,115 @@
+name: CD
+
+on:
+  push:
+    branches: [main]
+
+permissions: {}
+
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Release
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: true
+          fetch-depth: 0
+
+      - name: Check for RELEASE.txt
+        id: guard
+        run: |
+          if [ ! -f RELEASE.txt ]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: jdx/mise-action@1648a7812b9aeae629881980618f079932869151 # v4.0.1
+        if: steps.guard.outputs.skip != 'true'
+        with:
+          cache: true
+
+      - name: Read bump level
+        if: steps.guard.outputs.skip != 'true'
+        id: level
+        run: echo "value=$(head --lines 1 RELEASE.txt | tr -d '[:space:]')" >> "$GITHUB_OUTPUT"
+
+      - name: Bump version
+        if: steps.guard.outputs.skip != 'true'
+        env:
+          BUMP_LEVEL: ${{ steps.level.outputs.value }}
+        run: bump-my-version bump "$BUMP_LEVEL"
+
+      - name: Read new version
+        if: steps.guard.outputs.skip != 'true'
+        id: version
+        run: echo "value=$(bump-my-version show current_version)" >> "$GITHUB_OUTPUT"
+
+      - name: Save release notes
+        if: steps.guard.outputs.skip != 'true'
+        run: tail --lines +2 RELEASE.txt > /tmp/release-notes.md
+
+      - name: Update changelog
+        if: steps.guard.outputs.skip != 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: zig build update-changelog -- "$VERSION"
+
+      - name: Remove RELEASE.txt
+        if: steps.guard.outputs.skip != 'true'
+        run: rm RELEASE.txt
+
+      - name: Run formatters
+        if: steps.guard.outputs.skip != 'true'
+        run: hk run fix
+
+      - name: Commit release
+        if: steps.guard.outputs.skip != 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add build.zig.zon .bumpversion.toml CHANGELOG.md RELEASE.txt
+          git commit -m "Release v$VERSION"
+
+      - name: Tag release
+        if: steps.guard.outputs.skip != 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: git tag "v$VERSION"
+
+      - name: Build binaries
+        if: steps.guard.outputs.skip != 'true'
+        run: |
+          zig build -Dtarget=x86_64-linux-gnu -Doptimize=ReleaseSafe --prefix zig-out/x86_64-linux-gnu
+          zig build -Dtarget=x86_64-linux-musl -Doptimize=ReleaseSafe --prefix zig-out/x86_64-linux-musl
+
+      - name: Prepare release assets
+        if: steps.guard.outputs.skip != 'true'
+        run: |
+          cp zig-out/x86_64-linux-gnu/bin/zeile zeile-x86_64-linux-gnu
+          cp zig-out/x86_64-linux-musl/bin/zeile zeile-x86_64-linux-musl
+
+      - name: Push
+        if: steps.guard.outputs.skip != 'true'
+        run: git push origin main --follow-tags
+
+      - name: Create GitHub release
+        if: steps.guard.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          gh release create "v$VERSION" \
+            --title "v$VERSION" \
+            --notes-file /tmp/release-notes.md \
+            zeile-x86_64-linux-gnu \
+            zeile-x86_64-linux-musl

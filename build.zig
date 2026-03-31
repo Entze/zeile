@@ -142,15 +142,30 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_mod_tests.step);
     test_step.dependOn(&run_exe_tests.step);
 
-    // Just like flags, top level steps are also listed in the `--help` menu.
-    //
-    // The Zig build system is entirely implemented in userland, which means
-    // that it cannot hook into private compiler APIs. All compilation work
-    // orchestrated by the build system will result in other Zig compiler
-    // subcommands being invoked with the right flags defined. You can observe
-    // these invocations when one fails (or you pass a flag to increase
-    // verbosity) to validate assumptions and diagnose problems.
-    //
-    // Lastly, the Zig build system is relatively simple and self-contained,
-    // and reading its source code will allow you to master it.
+    const check_release_exe = b.addExecutable(.{
+        .name = "check-release",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("scripts/check_release.zig"),
+            .target = b.graph.host,
+        }),
+    });
+    const run_check_release = b.addRunArtifact(check_release_exe);
+    run_check_release.setCwd(.{ .src_path = .{ .owner = b, .sub_path = "" } });
+    const check_release_step = b.step("check-release", "Validate RELEASE.txt");
+    check_release_step.dependOn(&run_check_release.step);
+
+    const update_changelog_exe = b.addExecutable(.{
+        .name = "update-changelog",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("scripts/update_changelog.zig"),
+            .target = b.graph.host,
+        }),
+    });
+    const run_update_changelog = b.addRunArtifact(update_changelog_exe);
+    run_update_changelog.setCwd(.{ .src_path = .{ .owner = b, .sub_path = "" } });
+    if (b.args) |args| {
+        run_update_changelog.addArgs(args);
+    }
+    const update_changelog_step = b.step("update-changelog", "Update CHANGELOG.md with RELEASE.txt contents");
+    update_changelog_step.dependOn(&run_update_changelog.step);
 }
