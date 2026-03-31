@@ -45,7 +45,7 @@ jobs:
         if: steps.guard.outputs.skip != 'true'
         env:
           BUMP_LEVEL: ${{ steps.level.outputs.value }}
-        run: bump-my-version bump "$BUMP_LEVEL"
+        run: bump-my-version bump "${BUMP_LEVEL,,}"
 
       - name: Read new version
         if: steps.guard.outputs.skip != 'true'
