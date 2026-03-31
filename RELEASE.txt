@@ -1,0 +1,2 @@
+PATCH
+Fix issue in CD pipeline to actually publish releases.
