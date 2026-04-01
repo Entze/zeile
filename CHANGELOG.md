@@ -6,6 +6,10 @@ This project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and uses a continuous
 release process.
 
+## 0.1.3
+
+Add a comprehensive README with \<makeareadme.com> as template
+
 ## 0.1.2
 
 Improve release and changelog scripts
