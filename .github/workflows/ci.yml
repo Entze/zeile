@@ -7,11 +7,12 @@ on:
     paths:
       - "**/*.zig"
       - "**/*.zon"
+      - "**/*.md"
+      - "**/*.toml"
       - "hk.pkl"
       - ".github/workflows/ci.yml"
       - ".github/workflows/cd.yml"
       - "RELEASE.txt"
-      - "CHANGELOG.md"
 
 permissions: {}
 
