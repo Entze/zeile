@@ -17,6 +17,20 @@ local formatters = new Mapping<String, Step> {
     types = List("text")
     exclude = List("tests/resources/release/**", "tests/resources/changelog/**")
   }
+  ["taplo_format"] = Builtins.taplo_format
+  ["mdformat"] {
+    types = List("markdown")
+    exclude =
+      List(
+        ".claude/**/*.md",
+        ".claude/**/*.markdown",
+        "tests/resources/changelog/**/*.md",
+        "tests/resources/changelog/**/*.markdown",
+      )
+    glob = List("**/*.md", "**/*.markdown")
+    check = "mdformat --check {{files}}"
+    fix = "mdformat {{files}}"
+  }
 }
 
 local checkers = new Mapping<String, Step> {
@@ -26,6 +40,7 @@ local checkers = new Mapping<String, Step> {
   }
   ["pinact"] = Builtins.pinact
   ["zizmor"] = Builtins.zizmor
+  ["taplo"] = Builtins.taplo
 }
 
 local linters = new Mapping<String, Step> {
