@@ -12,7 +12,7 @@ changed, 5-hour and 7-day rate limit windows with countdown timers and progress
 bars, and context window utilization.
 
 Written in ⚡ Zig, zeile works both as a standalone CLI application and as a
-reusable library that other ⚡ Zig programs can depend on.
+reusable library that other programs can depend on.
 
 ## Example output
 
