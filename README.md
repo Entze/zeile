@@ -18,16 +18,16 @@ reusable library that other ⚡ Zig programs can depend on.
 
 ```
 Claude Opus [$0.01] [+156-23]
-[5D: [.-        ]  23.5%  1h23m] [7D: [..        ]  41.2%  3d12h] [CTX: [.         ]   8%]
+[5D: [##/       ]  23.5%  1h23m] [7D: [####.     ]  41.2%  3d12h] [CTX: [v         ]   8%]
 ```
 
 Colors adjust automatically:
 
-| Range | 5-hour window | 7-day window | Context window |
-|-------|--------------|--------------|----------------|
-| Green  | < 66.6 %      | < 75 %        | < 50 %          |
-| Yellow | ≥ 66.6 %      | ≥ 75 %        | ≥ 50 %          |
-| Red    | ≥ 88.8 %      | ≥ 90 %        | ≥ 65 %          |
+| Range  | 5-hour window | 7-day window | Context window |
+| ------ | ------------- | ------------ | -------------- |
+| Green  | < 66.6 %      | < 75 %       | < 50 %         |
+| Yellow | ≥ 66.6 %      | ≥ 75 %       | ≥ 50 %         |
+| Red    | ≥ 88.8 %      | ≥ 90 %       | ≥ 65 %         |
 
 ## Installation
 
@@ -148,7 +148,11 @@ pub fn main() !void {
 
     // Resolve any field by dot-separated path without manual optional unwrapping.
     const used = try session.get(".context_window.used_percentage");
-    std.debug.print("context: {}%\n", .{used.byte});
+    switch (used) {
+        .byte => |pct| std.debug.print("context: {}%\n", .{pct}),
+        .null => std.debug.print("context: n/a\n", .{}),
+        else => unreachable,
+    }
 }
 ```
 
@@ -163,14 +167,14 @@ text-based progress bars with configurable width, fill characters, and
 multi-stage animation segments. It can be used independently of the rest of the
 library.
 
-See the [source documentation](https://github.com/Entze/zeile/tree/main/src)
-and the [latest release](https://github.com/Entze/zeile/releases/latest) for
-the full API reference.
+See the [source documentation](https://github.com/Entze/zeile/tree/main/src) and
+the [latest release](https://github.com/Entze/zeile/releases/latest) for the
+full API reference.
 
 ## Support
 
-Open an issue on [GitHub](https://github.com/Entze/zeile/issues) to report a
-bug or request a feature.
+Open an issue on [GitHub](https://github.com/Entze/zeile/issues) to report a bug
+or request a feature.
 
 ## Contributing
 
