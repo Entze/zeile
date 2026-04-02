@@ -6,6 +6,13 @@ This project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and uses a continuous
 release process.
 
+## 0.2.0
+
+Add expression language for template rendering
+
+- Add an expression language module (`expression.zig`) supporting variables and
+  literals
+
 ## 0.1.3
 
 Add a comprehensive README with \<makeareadme.com> as template
