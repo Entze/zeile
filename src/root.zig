@@ -1,5 +1,6 @@
 const std = @import("std");
 
+pub const expression = @import("expression.zig");
 pub const progressbar = @import("progressbar.zig");
 
 /// Current model identifier and display name.

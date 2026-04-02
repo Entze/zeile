@@ -1,0 +1,4 @@
+MINOR
+Add expression language for template rendering
+
+- Add an expression language module (`expression.zig`) supporting variables and literals
