@@ -1,12 +1,12 @@
 const std = @import("std");
-const root = @import("root.zig");
-
-const SessionData = root.SessionData;
-const Primitive = root.Primitive;
 
 pub const Error = error{ FieldNotFound, NotPrimitive, InvalidSyntax };
 
-/// Evaluate a template string against session data, writing the result.
+/// Evaluate a template string against data, writing the result.
+///
+/// `data` must provide a `get` method accepting `[]const u8` and
+/// returning a tagged union wrapped in an error union whose error set
+/// is a subset of `Error`.
 ///
 /// Template syntax:
 /// - `$$` produces a literal `$`.
@@ -18,15 +18,15 @@ pub const Error = error{ FieldNotFound, NotPrimitive, InvalidSyntax };
 /// Returns `error.InvalidSyntax` when a `$` is not followed by `$`, `.`,
 /// or `{`, or when a braced accessor has no closing `}`.
 /// Propagates `error.FieldNotFound` and `error.NotPrimitive` from the
-/// underlying `SessionData.get` call.
-pub fn render(data: *const SessionData, template: []const u8, writer: *std.io.Writer) Error!void {
+/// underlying `get` call, and `error.WriteFailed` from the writer.
+pub fn render(data: anytype, template: []const u8, writer: *std.io.Writer) (Error || std.io.Writer.Error)!void {
     var i: usize = 0;
     while (i < template.len) {
         if (template[i] == '$') {
             if (i + 1 >= template.len) return error.InvalidSyntax;
             const next = template[i + 1];
             if (next == '$') {
-                writer.writeByte('$') catch return error.InvalidSyntax;
+                try writer.writeByte('$');
                 i += 2;
             } else if (next == '{') {
                 const start = i + 2;
@@ -34,7 +34,7 @@ pub fn render(data: *const SessionData, template: []const u8, writer: *std.io.Wr
                     return error.InvalidSyntax;
                 const path = template[start..end];
                 const prim = try data.get(path);
-                writePrimitive(writer, prim) catch return error.InvalidSyntax;
+                try writePrimitive(writer, prim);
                 i = end + 1;
             } else if (next == '.') {
                 const start = i + 1;
@@ -44,19 +44,19 @@ pub fn render(data: *const SessionData, template: []const u8, writer: *std.io.Wr
                 }
                 const path = template[start..end];
                 const prim = try data.get(path);
-                writePrimitive(writer, prim) catch return error.InvalidSyntax;
+                try writePrimitive(writer, prim);
                 i = end;
             } else {
                 return error.InvalidSyntax;
             }
         } else {
-            writer.writeByte(template[i]) catch return error.InvalidSyntax;
+            try writer.writeByte(template[i]);
             i += 1;
         }
     }
 }
 
-fn writePrimitive(writer: *std.io.Writer, p: Primitive) !void {
+fn writePrimitive(writer: *std.io.Writer, p: anytype) std.io.Writer.Error!void {
     switch (p) {
         .null => try writer.writeAll("null"),
         .bool => |v| try writer.writeAll(if (v) "true" else "false"),
@@ -68,24 +68,28 @@ fn writePrimitive(writer: *std.io.Writer, p: Primitive) !void {
     }
 }
 
-fn parseSessionData(gpa: std.mem.Allocator, path: []const u8) !std.json.Parsed(SessionData) {
-    const input = try std.fs.cwd().readFileAlloc(gpa, path, 1024 * 1024);
-    defer gpa.free(input);
-    return std.json.parseFromSlice(SessionData, gpa, input, .{ .ignore_unknown_fields = true, .allocate = .alloc_always });
-}
-
-fn renderAlloc(data: *const SessionData, template: []const u8, gpa: std.mem.Allocator) Error![]const u8 {
+fn renderAlloc(data: anytype, template: []const u8, gpa: std.mem.Allocator) (Error || std.io.Writer.Error || error{OutOfMemory})![]const u8 {
     var aw: std.io.Writer.Allocating = .init(gpa);
     errdefer aw.deinit();
     try render(data, template, &aw.writer);
-    return aw.toOwnedSlice() catch ""; // allocator failure yields empty
+    return try aw.toOwnedSlice();
 }
+
+const testing = struct {
+    const SessionData = @import("root.zig").SessionData;
+
+    fn parseSessionData(gpa: std.mem.Allocator, path: []const u8) !std.json.Parsed(SessionData) {
+        const input = try std.fs.cwd().readFileAlloc(gpa, path, 1024 * 1024);
+        defer gpa.free(input);
+        return std.json.parseFromSlice(SessionData, gpa, input, .{ .ignore_unknown_fields = true, .allocate = .alloc_always });
+    }
+};
 
 // -- Literal text --
 
 test "render: plain text without expressions" {
     const gpa = std.testing.allocator;
-    const parsed = try parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
+    const parsed = try testing.parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
     defer parsed.deinit();
     const result = try renderAlloc(&parsed.value, "hello world", gpa);
     defer gpa.free(result);
@@ -94,7 +98,7 @@ test "render: plain text without expressions" {
 
 test "render: empty string" {
     const gpa = std.testing.allocator;
-    const parsed = try parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
+    const parsed = try testing.parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
     defer parsed.deinit();
     const result = try renderAlloc(&parsed.value, "", gpa);
     defer gpa.free(result);
@@ -105,7 +109,7 @@ test "render: empty string" {
 
 test "render: escaped dollar sign" {
     const gpa = std.testing.allocator;
-    const parsed = try parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
+    const parsed = try testing.parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
     defer parsed.deinit();
     const result = try renderAlloc(&parsed.value, "$$", gpa);
     defer gpa.free(result);
@@ -114,7 +118,7 @@ test "render: escaped dollar sign" {
 
 test "render: escaped dollar sign in text" {
     const gpa = std.testing.allocator;
-    const parsed = try parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
+    const parsed = try testing.parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
     defer parsed.deinit();
     const result = try renderAlloc(&parsed.value, "cost: $$5", gpa);
     defer gpa.free(result);
@@ -123,7 +127,7 @@ test "render: escaped dollar sign in text" {
 
 test "render: double escaped dollar signs" {
     const gpa = std.testing.allocator;
-    const parsed = try parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
+    const parsed = try testing.parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
     defer parsed.deinit();
     const result = try renderAlloc(&parsed.value, "$$$$", gpa);
     defer gpa.free(result);
@@ -134,7 +138,7 @@ test "render: double escaped dollar signs" {
 
 test "render: bare accessor for string" {
     const gpa = std.testing.allocator;
-    const parsed = try parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
+    const parsed = try testing.parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
     defer parsed.deinit();
     const result = try renderAlloc(&parsed.value, "$.cwd", gpa);
     defer gpa.free(result);
@@ -143,7 +147,7 @@ test "render: bare accessor for string" {
 
 test "render: bare accessor for nested string" {
     const gpa = std.testing.allocator;
-    const parsed = try parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
+    const parsed = try testing.parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
     defer parsed.deinit();
     const result = try renderAlloc(&parsed.value, "$.model.display_name", gpa);
     defer gpa.free(result);
@@ -152,7 +156,7 @@ test "render: bare accessor for nested string" {
 
 test "render: bare accessor terminated by space" {
     const gpa = std.testing.allocator;
-    const parsed = try parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
+    const parsed = try testing.parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
     defer parsed.deinit();
     const result = try renderAlloc(&parsed.value, "$.cwd rest", gpa);
     defer gpa.free(result);
@@ -161,7 +165,7 @@ test "render: bare accessor terminated by space" {
 
 test "render: bare accessor preceded by text" {
     const gpa = std.testing.allocator;
-    const parsed = try parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
+    const parsed = try testing.parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
     defer parsed.deinit();
     const result = try renderAlloc(&parsed.value, "dir: $.cwd", gpa);
     defer gpa.free(result);
@@ -170,7 +174,7 @@ test "render: bare accessor preceded by text" {
 
 test "render: bare accessor for bool" {
     const gpa = std.testing.allocator;
-    const parsed = try parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
+    const parsed = try testing.parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
     defer parsed.deinit();
     const result = try renderAlloc(&parsed.value, "$.exceeds_200k_tokens", gpa);
     defer gpa.free(result);
@@ -179,7 +183,7 @@ test "render: bare accessor for bool" {
 
 test "render: bare accessor for unsigned integer" {
     const gpa = std.testing.allocator;
-    const parsed = try parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
+    const parsed = try testing.parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
     defer parsed.deinit();
     const result = try renderAlloc(&parsed.value, "$.cost.total_duration_ms", gpa);
     defer gpa.free(result);
@@ -188,7 +192,7 @@ test "render: bare accessor for unsigned integer" {
 
 test "render: bare accessor for vim_mode" {
     const gpa = std.testing.allocator;
-    const parsed = try parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
+    const parsed = try testing.parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
     defer parsed.deinit();
     const result = try renderAlloc(&parsed.value, "$.vim.mode", gpa);
     defer gpa.free(result);
@@ -197,7 +201,7 @@ test "render: bare accessor for vim_mode" {
 
 test "render: bare accessor for byte" {
     const gpa = std.testing.allocator;
-    const parsed = try parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
+    const parsed = try testing.parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
     defer parsed.deinit();
     const result = try renderAlloc(&parsed.value, "$.context_window.used_percentage", gpa);
     defer gpa.free(result);
@@ -208,7 +212,7 @@ test "render: bare accessor for byte" {
 
 test "render: braced accessor for string" {
     const gpa = std.testing.allocator;
-    const parsed = try parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
+    const parsed = try testing.parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
     defer parsed.deinit();
     const result = try renderAlloc(&parsed.value, "${.session_id}", gpa);
     defer gpa.free(result);
@@ -217,7 +221,7 @@ test "render: braced accessor for string" {
 
 test "render: braced accessor embedded in text" {
     const gpa = std.testing.allocator;
-    const parsed = try parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
+    const parsed = try testing.parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
     defer parsed.deinit();
     const result = try renderAlloc(&parsed.value, "Claude ${.model.display_name} model", gpa);
     defer gpa.free(result);
@@ -226,7 +230,7 @@ test "render: braced accessor embedded in text" {
 
 test "render: braced accessor adjacent to text" {
     const gpa = std.testing.allocator;
-    const parsed = try parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
+    const parsed = try testing.parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
     defer parsed.deinit();
     const result = try renderAlloc(&parsed.value, "v${.version}!", gpa);
     defer gpa.free(result);
@@ -237,7 +241,7 @@ test "render: braced accessor adjacent to text" {
 
 test render {
     const gpa = std.testing.allocator;
-    const parsed = try parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
+    const parsed = try testing.parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
     defer parsed.deinit();
     const result = try renderAlloc(&parsed.value, "Claude ${.model.display_name} $$${.cost.total_cost_usd}", gpa);
     defer gpa.free(result);
@@ -250,7 +254,7 @@ test render {
 
 test "render: null from optional parent" {
     const gpa = std.testing.allocator;
-    const parsed = try parseSessionData(gpa, "tests/resources/session_data/good/minimal.json");
+    const parsed = try testing.parseSessionData(gpa, "tests/resources/session_data/good/minimal.json");
     defer parsed.deinit();
     const result = try renderAlloc(&parsed.value, "Mode: ${.vim.mode}", gpa);
     defer gpa.free(result);
@@ -259,7 +263,7 @@ test "render: null from optional parent" {
 
 test "render: null bare accessor" {
     const gpa = std.testing.allocator;
-    const parsed = try parseSessionData(gpa, "tests/resources/session_data/good/minimal.json");
+    const parsed = try testing.parseSessionData(gpa, "tests/resources/session_data/good/minimal.json");
     defer parsed.deinit();
     const result = try renderAlloc(&parsed.value, "$.vim.mode", gpa);
     defer gpa.free(result);
@@ -270,42 +274,42 @@ test "render: null bare accessor" {
 
 test "render: error.FieldNotFound for unknown field" {
     const gpa = std.testing.allocator;
-    const parsed = try parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
+    const parsed = try testing.parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
     defer parsed.deinit();
     try std.testing.expectError(error.FieldNotFound, renderAlloc(&parsed.value, "${.unknown.invalid}", gpa));
 }
 
 test "render: error.NotPrimitive for struct field" {
     const gpa = std.testing.allocator;
-    const parsed = try parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
+    const parsed = try testing.parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
     defer parsed.deinit();
     try std.testing.expectError(error.NotPrimitive, renderAlloc(&parsed.value, "${.context_window}", gpa));
 }
 
 test "render: error.FieldNotFound for bare accessor" {
     const gpa = std.testing.allocator;
-    const parsed = try parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
+    const parsed = try testing.parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
     defer parsed.deinit();
     try std.testing.expectError(error.FieldNotFound, renderAlloc(&parsed.value, "$.nonexistent", gpa));
 }
 
 test "render: error.InvalidSyntax for unclosed brace" {
     const gpa = std.testing.allocator;
-    const parsed = try parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
+    const parsed = try testing.parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
     defer parsed.deinit();
     try std.testing.expectError(error.InvalidSyntax, renderAlloc(&parsed.value, "${.cwd", gpa));
 }
 
 test "render: error.InvalidSyntax for dollar not followed by valid char" {
     const gpa = std.testing.allocator;
-    const parsed = try parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
+    const parsed = try testing.parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
     defer parsed.deinit();
     try std.testing.expectError(error.InvalidSyntax, renderAlloc(&parsed.value, "$x", gpa));
 }
 
 test "render: error.InvalidSyntax for dollar at end of input" {
     const gpa = std.testing.allocator;
-    const parsed = try parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
+    const parsed = try testing.parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
     defer parsed.deinit();
     try std.testing.expectError(error.InvalidSyntax, renderAlloc(&parsed.value, "end$", gpa));
 }
@@ -314,7 +318,7 @@ test "render: error.InvalidSyntax for dollar at end of input" {
 
 test "render: multiple braced accessors" {
     const gpa = std.testing.allocator;
-    const parsed = try parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
+    const parsed = try testing.parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
     defer parsed.deinit();
     const result = try renderAlloc(&parsed.value, "${.model.id} ${.model.display_name}", gpa);
     defer gpa.free(result);
@@ -323,9 +327,38 @@ test "render: multiple braced accessors" {
 
 test "render: bare then braced accessor" {
     const gpa = std.testing.allocator;
-    const parsed = try parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
+    const parsed = try testing.parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
     defer parsed.deinit();
     const result = try renderAlloc(&parsed.value, "$.version ${.model.display_name}", gpa);
     defer gpa.free(result);
     try std.testing.expectEqualStrings("1.0.80 Opus", result);
+}
+
+// -- Allocation failure --
+
+test "render: allocation failure during write propagates WriteFailed" {
+    const gpa = std.testing.allocator;
+    const parsed = try testing.parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
+    defer parsed.deinit();
+    var failing = std.testing.FailingAllocator.init(gpa, .{ .fail_index = 0 });
+    try std.testing.expectError(error.WriteFailed, renderAlloc(&parsed.value, "hello world", failing.allocator()));
+}
+
+test "render: allocation failure during accessor write propagates WriteFailed" {
+    const gpa = std.testing.allocator;
+    const parsed = try testing.parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
+    defer parsed.deinit();
+    var failing = std.testing.FailingAllocator.init(gpa, .{ .fail_index = 0 });
+    try std.testing.expectError(error.WriteFailed, renderAlloc(&parsed.value, "${.cwd}", failing.allocator()));
+}
+
+test "render: allocation failure in toOwnedSlice propagates OutOfMemory" {
+    const gpa = std.testing.allocator;
+    const parsed = try testing.parseSessionData(gpa, "tests/resources/session_data/good/complete.json");
+    defer parsed.deinit();
+    // The first allocation creates the writer buffer, which is large
+    // enough for the short template output.  Rendering succeeds, but
+    // toOwnedSlice needs to resize/alloc, which fails.
+    var failing = std.testing.FailingAllocator.init(gpa, .{ .resize_fail_index = 0, .fail_index = 1 });
+    try std.testing.expectError(error.OutOfMemory, renderAlloc(&parsed.value, "hi", failing.allocator()));
 }
