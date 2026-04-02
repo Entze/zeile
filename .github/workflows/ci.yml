@@ -13,6 +13,8 @@ on:
       - ".github/workflows/ci.yml"
       - ".github/workflows/cd.yml"
       - "RELEASE.txt"
+      - "mise.toml"
+      - "renovate.json"
 
 permissions: {}
 
