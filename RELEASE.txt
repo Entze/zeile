@@ -1,0 +1,2 @@
+PATCH
+Update actionlint to v1.7.12
