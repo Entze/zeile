@@ -6,6 +6,10 @@ This project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and uses a continuous
 release process.
 
+## 0.2.2
+
+Update hk to v1.58.1
+
 ## 0.2.1
 
 Activate Renovate[bot]
