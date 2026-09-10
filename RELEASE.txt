@@ -1,0 +1,2 @@
+PATCH
+Update jdx/mise-action to v4.3.0
