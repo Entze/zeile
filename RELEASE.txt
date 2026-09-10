@@ -1,0 +1,2 @@
+PATCH
+Update bump-my-version to v1.5.1
