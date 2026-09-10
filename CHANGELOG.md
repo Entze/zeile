@@ -6,6 +6,10 @@ This project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and uses a continuous
 release process.
 
+## 0.2.4
+
+Update pinact to v4
+
 ## 0.2.3
 
 Update jdx/mise-action to v4.3.0
