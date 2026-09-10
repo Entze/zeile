@@ -6,6 +6,10 @@ This project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and uses a continuous
 release process.
 
+## 0.2.7
+
+Update bump-my-version to v1.5.1
+
 ## 0.2.6
 
 Update actions/checkout to v7
