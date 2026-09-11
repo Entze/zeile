@@ -1,2 +1,0 @@
-MINOR
-Upgrade to zig 0.16.0

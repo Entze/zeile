@@ -6,6 +6,10 @@ This project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and uses a continuous
 release process.
 
+## 0.3.0
+
+Upgrade to zig 0.16.0
+
 ## 0.2.12
 
 - Replace 5D with 5h
