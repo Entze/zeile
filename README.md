@@ -18,16 +18,26 @@ reusable library that other programs can depend on.
 
 ```
 Claude Opus [$0.01] [+156-23]
-[5D: [##/       ]  23.5%  1h23m] [7D: [####.     ]  41.2%  3d12h] [CTX: [v         ]   8%]
+[5h: [##/       ]  23.5%  1h23m] [7d: [####.     ]  41.2%  3d12h] [CTX: [v         ]   8%]
 ```
 
-Colors adjust automatically:
+The rate limit bars are colored by pace rather than by fill. The affordable rate
+is the unspent share of a window divided by the time left until it resets; the
+current rate is the spent share divided by the time since the window opened.
 
-| Range  | 5-hour window | 7-day window | Context window |
-| ------ | ------------- | ------------ | -------------- |
-| Green  | < 66.6 %      | < 75 %       | < 50 %         |
-| Yellow | ≥ 66.6 %      | ≥ 75 %       | ≥ 50 %         |
-| Red    | ≥ 88.8 %      | ≥ 90 %       | ≥ 65 %         |
+| Color  | Current rate against affordable rate |
+| ------ | ------------------------------------ |
+| Green  | up to 1.15 ×                         |
+| Yellow | 1.70 ×                               |
+| Red    | 2.50 × and above                     |
+
+Colors blend along a green to yellow to red ramp between those points, spaced by
+the logarithm of the multiple, so a session twice over pace is always the same
+distance further along the ramp. An untouched window is always green and an
+exhausted one is always red.
+
+The context window has no reset to pace against, so its bar is fill-based: green
+up to 35 %, yellow at 50 % and red at 65 % and above.
 
 ## Installation
 
