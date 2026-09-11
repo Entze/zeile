@@ -1,109 +1,107 @@
 const std = @import("std");
 
-pub fn main() void {
-    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .init;
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+pub fn main(init: std.process.Init) void {
+    const allocator = init.gpa;
+    const io = init.io;
 
-    const args = std.process.argsAlloc(allocator) catch {
-        fatal("could not allocate args");
+    const args = init.minimal.args.toSlice(init.arena.allocator()) catch {
+        fatal(io, "could not allocate args");
     };
-    defer std.process.argsFree(allocator, args);
 
     if (args.len < 2) {
-        fatal("usage: update-changelog <version>");
+        fatal(io, "usage: update-changelog <version>");
     }
     const version = args[1];
 
     // Stream RELEASE.txt: skip first line, collect remaining as summary.
-    const release_file = std.fs.cwd().openFile("RELEASE.txt", .{}) catch |err| {
-        fatalErr("could not open RELEASE.txt", err);
+    const release_file = std.Io.Dir.cwd().openFile(io, "RELEASE.txt", .{}) catch |err| {
+        fatalErr(io, "could not open RELEASE.txt", err);
     };
-    defer release_file.close();
+    defer release_file.close(io);
 
     var release_read_buf: [4096]u8 = undefined;
-    var release_reader = release_file.reader(&release_read_buf);
+    var release_reader = release_file.reader(io, &release_read_buf);
     const rr = &release_reader.interface;
 
     // Skip the first line (bump level).
     _ = rr.takeDelimiter('\n') catch {
-        fatal("could not read RELEASE.txt");
-    } orelse fatal("RELEASE.txt is empty");
+        fatal(io, "could not read RELEASE.txt");
+    } orelse fatal(io, "RELEASE.txt is empty");
 
     // Collect remaining lines into a buffer.
-    var summary_buf: std.ArrayList(u8) = .{};
+    var summary_buf: std.ArrayList(u8) = .empty;
     defer summary_buf.deinit(allocator);
     while (rr.takeDelimiter('\n') catch {
-        fatal("could not read RELEASE.txt");
+        fatal(io, "could not read RELEASE.txt");
     }) |line| {
-        if (summary_buf.items.len > 0) summary_buf.append(allocator, '\n') catch fatal("out of memory");
-        summary_buf.appendSlice(allocator, std.mem.trimRight(u8, line, "\r")) catch fatal("out of memory");
+        if (summary_buf.items.len > 0) summary_buf.append(allocator, '\n') catch fatal(io, "out of memory");
+        summary_buf.appendSlice(allocator, std.mem.trimEnd(u8, line, "\r")) catch fatal(io, "out of memory");
     }
     const summary = std.mem.trim(u8, summary_buf.items, &std.ascii.whitespace);
     if (summary.len == 0) {
-        fatal("RELEASE.txt has no summary (need at least 2 lines)");
+        fatal(io, "RELEASE.txt has no summary (need at least 2 lines)");
     }
 
     // Stream CHANGELOG.md line-by-line, inserting new section before first H2.
-    const cwd = std.fs.cwd();
-    const changelog_in = cwd.openFile("CHANGELOG.md", .{}) catch |err| {
-        fatalErr("could not open CHANGELOG.md", err);
+    const cwd: std.Io.Dir = .cwd();
+    const changelog_in = cwd.openFile(io, "CHANGELOG.md", .{}) catch |err| {
+        fatalErr(io, "could not open CHANGELOG.md", err);
     };
 
     const tmp_path = "CHANGELOG.md.tmp";
-    const changelog_out = cwd.createFile(tmp_path, .{}) catch |err| {
-        fatalErr("could not create temp file", err);
+    const changelog_out = cwd.createFile(io, tmp_path, .{}) catch |err| {
+        fatalErr(io, "could not create temp file", err);
     };
-    errdefer cwd.deleteFile(tmp_path) catch {};
+    errdefer cwd.deleteFile(io, tmp_path) catch {};
 
     {
-        defer changelog_in.close();
+        defer changelog_in.close(io);
 
         var ch_read_buf: [8192]u8 = undefined;
-        var ch_reader = changelog_in.reader(&ch_read_buf);
+        var ch_reader = changelog_in.reader(io, &ch_read_buf);
         const cr = &ch_reader.interface;
 
         var ch_write_buf: [8192]u8 = undefined;
-        var ch_writer = changelog_out.writerStreaming(&ch_write_buf);
+        var ch_writer = changelog_out.writerStreaming(io, &ch_write_buf);
         const cw = &ch_writer.interface;
         defer {
             cw.flush() catch {};
-            changelog_out.close();
+            changelog_out.close(io);
         }
 
         var inserted = false;
 
         while (cr.takeDelimiter('\n') catch {
-            fatal("could not read CHANGELOG.md");
+            fatal(io, "could not read CHANGELOG.md");
         }) |line| {
-            const trimmed_line = std.mem.trimRight(u8, line, "\r");
+            const trimmed_line = std.mem.trimEnd(u8, line, "\r");
             if (!inserted and std.mem.startsWith(u8, trimmed_line, "## ")) {
                 cw.print("## {s}\n\n{s}\n\n", .{ version, summary }) catch |err| {
-                    fatalErr("could not write temp file", err);
+                    fatalErr(io, "could not write temp file", err);
                 };
                 inserted = true;
             }
             cw.writeAll(trimmed_line) catch |err| {
-                fatalErr("could not write temp file", err);
+                fatalErr(io, "could not write temp file", err);
             };
             cw.writeByte('\n') catch |err| {
-                fatalErr("could not write temp file", err);
+                fatalErr(io, "could not write temp file", err);
             };
         }
 
         if (!inserted) {
             cw.print("## {s}\n\n{s}\n\n", .{ version, summary }) catch |err| {
-                fatalErr("could not write temp file", err);
+                fatalErr(io, "could not write temp file", err);
             };
         }
     }
 
-    cwd.rename(tmp_path, "CHANGELOG.md") catch |err| {
-        fatalErr("could not rename temp file", err);
+    cwd.rename(tmp_path, cwd, "CHANGELOG.md", io) catch |err| {
+        fatalErr(io, "could not rename temp file", err);
     };
 
     var out_buf: [128]u8 = undefined;
-    var w = std.fs.File.stdout().writerStreaming(&out_buf);
+    var w = std.Io.File.stdout().writerStreaming(io, &out_buf);
     w.interface.print("Updated CHANGELOG.md with version {s}\n", .{version}) catch {};
     w.interface.flush() catch {};
 }
@@ -199,17 +197,17 @@ test "findFirstH2: hashes mid-line not matched" {
     try testing.expect(findFirstH2("some text ## heading\n") == null);
 }
 
-fn fatal(msg: []const u8) noreturn {
+fn fatal(io: std.Io, msg: []const u8) noreturn {
     var buf: [256]u8 = undefined;
-    var w = std.fs.File.stderr().writerStreaming(&buf);
+    var w = std.Io.File.stderr().writerStreaming(io, &buf);
     w.interface.print("error: {s}\n", .{msg}) catch {};
     w.interface.flush() catch {};
     std.process.exit(1);
 }
 
-fn fatalErr(msg: []const u8, err: anyerror) noreturn {
+fn fatalErr(io: std.Io, msg: []const u8, err: anyerror) noreturn {
     var buf: [256]u8 = undefined;
-    var w = std.fs.File.stderr().writerStreaming(&buf);
+    var w = std.Io.File.stderr().writerStreaming(io, &buf);
     w.interface.print("error: {s}: {s}\n", .{ msg, @errorName(err) }) catch {};
     w.interface.flush() catch {};
     std.process.exit(1);

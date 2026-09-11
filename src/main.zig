@@ -38,10 +38,9 @@ const input_bytes_max = jsonSizeMax(zeile.SessionData);
 /// Size of the I/O streaming buffer.
 const io_buf_size = 4096;
 
-pub fn main() void {
-    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .init;
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+pub fn main(init: std.process.Init) void {
+    const allocator = init.gpa;
+    const io = init.io;
 
     const io_buf = allocator.create([io_buf_size]u8) catch
         std.debug.panic("error: failed to allocate {Bi} for the io buffer", .{io_buf_size});
@@ -50,19 +49,20 @@ pub fn main() void {
         std.debug.panic("error: failed to allocate {Bi} for the input buffer", .{input_bytes_max});
     defer allocator.free(input_buf);
 
-    const input_len = std.fs.File.stdin().readAll(input_buf) catch |err| {
+    var stdin = std.Io.File.stdin().readerStreaming(io, &.{});
+    const input_len = stdin.interface.readSliceShort(input_buf) catch |err| {
         var buf: [256]u8 = undefined;
-        var w = std.fs.File.stderr().writerStreaming(&buf);
+        var w = std.Io.File.stderr().writerStreaming(io, &buf);
         w.interface.print("error: {s}\n", .{@errorName(err)}) catch {};
         w.interface.flush() catch {};
         std.process.exit(1);
     };
     const input = input_buf[0..input_len];
 
-    var w = std.fs.File.stdout().writerStreaming(io_buf);
-    run(allocator, input, &w.interface) catch |err| {
+    var w = std.Io.File.stdout().writerStreaming(io, io_buf);
+    run(allocator, io, input, &w.interface) catch |err| {
         var buf: [256]u8 = undefined;
-        var ew = std.fs.File.stderr().writerStreaming(&buf);
+        var ew = std.Io.File.stderr().writerStreaming(io, &buf);
         ew.interface.print("error: failed to process session data ({s})\n", .{@errorName(err)}) catch {};
         ew.interface.flush() catch {};
         std.process.exit(1);
@@ -70,7 +70,7 @@ pub fn main() void {
     w.interface.flush() catch {};
 }
 
-fn run(allocator: std.mem.Allocator, input: []const u8, writer: *std.io.Writer) !void {
+fn run(allocator: std.mem.Allocator, io: std.Io, input: []const u8, writer: *std.Io.Writer) !void {
     const parsed = try std.json.parseFromSlice(zeile.SessionData, allocator, input, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
     const red = "\x1B[31m";
@@ -79,7 +79,7 @@ fn run(allocator: std.mem.Allocator, input: []const u8, writer: *std.io.Writer) 
     const reset = "\x1B[0m";
     const five_hour_used_percentage = if (parsed.value.rate_limits != null and parsed.value.rate_limits.?.five_hour != null) parsed.value.rate_limits.?.five_hour.?.used_percentage else 0.0;
     const five_hour_resets_at: i64 = if (parsed.value.rate_limits != null and parsed.value.rate_limits.?.five_hour != null) @intCast(parsed.value.rate_limits.?.five_hour.?.resets_at) else 0;
-    const five_hour_resets_in_ns: i64 = @min(@max(0, five_hour_resets_at - std.time.timestamp()) * std.time.ns_per_s, 5 * std.time.ns_per_hour);
+    const five_hour_resets_in: std.Io.Duration = .fromNanoseconds(@min(@max(0, five_hour_resets_at - std.Io.Timestamp.now(io, .real).toSeconds()) * std.time.ns_per_s, 5 * std.time.ns_per_hour));
     const five_hour_bar = zeile.progressbar.format(10, "[", ' ', &.{ ".", "-", "/", "|", "\\", "=", ">", "+", "x", "#" }, "]", five_hour_used_percentage);
     var five_hour_bar_color = green;
     if (five_hour_used_percentage >= 88.8) {
@@ -88,7 +88,7 @@ fn run(allocator: std.mem.Allocator, input: []const u8, writer: *std.io.Writer) 
         five_hour_bar_color = yellow;
     }
     const seven_day_resets_at: i64 = if (parsed.value.rate_limits != null and parsed.value.rate_limits.?.seven_day != null) @intCast(parsed.value.rate_limits.?.seven_day.?.resets_at) else 0;
-    const seven_day_resets_in_ns: i64 = @min(@max(0, seven_day_resets_at - std.time.timestamp()) * std.time.ns_per_s, 7 * std.time.ns_per_week);
+    const seven_day_resets_in: std.Io.Duration = .fromNanoseconds(@min(@max(0, seven_day_resets_at - std.Io.Timestamp.now(io, .real).toSeconds()) * std.time.ns_per_s, 7 * std.time.ns_per_week));
     const seven_day_used_percentage = if (parsed.value.rate_limits != null and parsed.value.rate_limits.?.seven_day != null) parsed.value.rate_limits.?.seven_day.?.used_percentage else 0.0;
     const seven_day_bar = zeile.progressbar.format(10, "[", ' ', &.{ ".", "-", "/", "|", "\\", "=", ">", "+", "x", "#" }, "]", seven_day_used_percentage);
 
@@ -107,8 +107,8 @@ fn run(allocator: std.mem.Allocator, input: []const u8, writer: *std.io.Writer) 
     } else if (ctx_percentage >= 50.0) {
         ctx_bar_color = yellow;
     }
-    const args = .{ parsed.value.model.display_name, parsed.value.cost.total_cost_usd, green, parsed.value.cost.total_lines_added, red, parsed.value.cost.total_lines_removed, reset, five_hour_bar_color, five_hour_bar, reset, five_hour_used_percentage, five_hour_resets_in_ns, seven_day_bar_color, seven_day_bar, reset, seven_day_used_percentage, seven_day_resets_in_ns, ctx_bar_color, ctx_bar, reset, ctx_percentage };
-    try writer.print("Claude {s} [${d:.2}] [{s}+{d}{s}-{d}{s}]\n[5h: {s}{s}{s} {d: >5.1}% {D}] [7d: {s}{s}{s} {d: >5.1}% {D}] [CTX: {s}{s}{s} {d: >3}%]", args);
+    const args = .{ parsed.value.model.display_name, parsed.value.cost.total_cost_usd, green, parsed.value.cost.total_lines_added, red, parsed.value.cost.total_lines_removed, reset, five_hour_bar_color, five_hour_bar, reset, five_hour_used_percentage, five_hour_resets_in, seven_day_bar_color, seven_day_bar, reset, seven_day_used_percentage, seven_day_resets_in, ctx_bar_color, ctx_bar, reset, ctx_percentage };
+    try writer.print("Claude {s} [${d:.2}] [{s}+{d}{s}-{d}{s}]\n[5h: {s}{s}{s} {d: >5.1}% {f}] [7d: {s}{s}{s} {d: >5.1}% {f}] [CTX: {s}{s}{s} {d: >3}%]", args);
     try writer.writeByte('\n');
 }
 
@@ -116,81 +116,81 @@ const testing = std.testing;
 
 test "run: complete input succeeds" {
     const allocator = testing.allocator;
-    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/session_data/good/complete.json", 1024 * 1024);
+    const input = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, "tests/resources/session_data/good/complete.json", allocator, .limited(1024 * 1024));
     defer allocator.free(input);
-    var aw: std.io.Writer.Allocating = .init(allocator);
+    var aw: std.Io.Writer.Allocating = .init(allocator);
     defer aw.deinit();
-    try run(allocator, input, &aw.writer);
+    try run(allocator, std.testing.io, input, &aw.writer);
 }
 
 test "run: explicit null optional fields succeed" {
     const allocator = testing.allocator;
-    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/session_data/good/minimal.json", 1024 * 1024);
+    const input = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, "tests/resources/session_data/good/minimal.json", allocator, .limited(1024 * 1024));
     defer allocator.free(input);
-    var aw: std.io.Writer.Allocating = .init(allocator);
+    var aw: std.Io.Writer.Allocating = .init(allocator);
     defer aw.deinit();
-    try run(allocator, input, &aw.writer);
+    try run(allocator, std.testing.io, input, &aw.writer);
 }
 
 test "run: omitted optional fields succeed" {
     const allocator = testing.allocator;
-    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/session_data/good/missing_optional_fields.json", 1024 * 1024);
+    const input = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, "tests/resources/session_data/good/missing_optional_fields.json", allocator, .limited(1024 * 1024));
     defer allocator.free(input);
-    var aw: std.io.Writer.Allocating = .init(allocator);
+    var aw: std.Io.Writer.Allocating = .init(allocator);
     defer aw.deinit();
-    try run(allocator, input, &aw.writer);
+    try run(allocator, std.testing.io, input, &aw.writer);
 }
 
 test "run: empty stdin produces parse error" {
     const allocator = testing.allocator;
-    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/session_data/bad/empty.json", 1024 * 1024);
+    const input = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, "tests/resources/session_data/bad/empty.json", allocator, .limited(1024 * 1024));
     defer allocator.free(input);
-    var aw: std.io.Writer.Allocating = .init(allocator);
+    var aw: std.Io.Writer.Allocating = .init(allocator);
     defer aw.deinit();
-    try testing.expectError(error.UnexpectedEndOfInput, run(allocator, input, &aw.writer));
+    try testing.expectError(error.UnexpectedEndOfInput, run(allocator, std.testing.io, input, &aw.writer));
 }
 
 test "run: invalid JSON produces parse error" {
     const allocator = testing.allocator;
-    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/session_data/bad/invalid.json", 1024 * 1024);
+    const input = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, "tests/resources/session_data/bad/invalid.json", allocator, .limited(1024 * 1024));
     defer allocator.free(input);
-    var aw: std.io.Writer.Allocating = .init(allocator);
+    var aw: std.Io.Writer.Allocating = .init(allocator);
     defer aw.deinit();
-    try testing.expectError(error.SyntaxError, run(allocator, input, &aw.writer));
+    try testing.expectError(error.SyntaxError, run(allocator, std.testing.io, input, &aw.writer));
 }
 
 test "run: truncated JSON produces parse error" {
     const allocator = testing.allocator;
-    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/session_data/bad/truncated.json", 1024 * 1024);
+    const input = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, "tests/resources/session_data/bad/truncated.json", allocator, .limited(1024 * 1024));
     defer allocator.free(input);
-    var aw: std.io.Writer.Allocating = .init(allocator);
+    var aw: std.Io.Writer.Allocating = .init(allocator);
     defer aw.deinit();
-    try testing.expectError(error.SyntaxError, run(allocator, input, &aw.writer));
+    try testing.expectError(error.SyntaxError, run(allocator, std.testing.io, input, &aw.writer));
 }
 
 test "run: unknown fields succeed" {
     const allocator = testing.allocator;
-    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/session_data/good/extra_field.json", 1024 * 1024);
+    const input = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, "tests/resources/session_data/good/extra_field.json", allocator, .limited(1024 * 1024));
     defer allocator.free(input);
-    var aw: std.io.Writer.Allocating = .init(allocator);
+    var aw: std.Io.Writer.Allocating = .init(allocator);
     defer aw.deinit();
-    try run(allocator, input, &aw.writer);
+    try run(allocator, std.testing.io, input, &aw.writer);
 }
 
 test "run: wrong JSON shape produces parse error" {
     const allocator = testing.allocator;
-    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/session_data/bad/wrong_shape.json", 1024 * 1024);
+    const input = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, "tests/resources/session_data/bad/wrong_shape.json", allocator, .limited(1024 * 1024));
     defer allocator.free(input);
-    var aw: std.io.Writer.Allocating = .init(allocator);
+    var aw: std.Io.Writer.Allocating = .init(allocator);
     defer aw.deinit();
-    try testing.expectError(error.UnexpectedToken, run(allocator, input, &aw.writer));
+    try testing.expectError(error.UnexpectedToken, run(allocator, std.testing.io, input, &aw.writer));
 }
 
 test "run: null non-nullable field produces parse error" {
     const allocator = testing.allocator;
-    const input = try std.fs.cwd().readFileAlloc(allocator, "tests/resources/session_data/bad/null_required.json", 1024 * 1024);
+    const input = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, "tests/resources/session_data/bad/null_required.json", allocator, .limited(1024 * 1024));
     defer allocator.free(input);
-    var aw: std.io.Writer.Allocating = .init(allocator);
+    var aw: std.Io.Writer.Allocating = .init(allocator);
     defer aw.deinit();
-    try testing.expectError(error.UnexpectedToken, run(allocator, input, &aw.writer));
+    try testing.expectError(error.UnexpectedToken, run(allocator, std.testing.io, input, &aw.writer));
 }

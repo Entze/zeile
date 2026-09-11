@@ -1,35 +1,37 @@
 const std = @import("std");
 
-pub fn main() void {
-    const file = std.fs.cwd().openFile("RELEASE.txt", .{}) catch |err| switch (err) {
+pub fn main(init: std.process.Init) void {
+    const io = init.io;
+
+    const file = std.Io.Dir.cwd().openFile(io, "RELEASE.txt", .{}) catch |err| switch (err) {
         error.FileNotFound => {
             var buf: [64]u8 = undefined;
-            var w = std.fs.File.stdout().writerStreaming(&buf);
+            var w = std.Io.File.stdout().writerStreaming(io, &buf);
             w.interface.print("no RELEASE.txt, nothing to release\n", .{}) catch {};
             w.interface.flush() catch {};
             return;
         },
-        else => fatalErr("could not open RELEASE.txt", err),
+        else => fatalErr(io, "could not open RELEASE.txt", err),
     };
-    defer file.close();
+    defer file.close(io);
 
     var read_buf: [4096]u8 = undefined;
-    var reader = file.reader(&read_buf);
+    var reader = file.reader(io, &read_buf);
     const r = &reader.interface;
 
     const first_line = r.takeDelimiter('\n') catch {
-        fatal("could not read RELEASE.txt");
-    } orelse fatal("RELEASE.txt is empty");
+        fatal(io, "could not read RELEASE.txt");
+    } orelse fatal(io, "RELEASE.txt is empty");
 
     const trimmed = std.mem.trim(u8, first_line, &std.ascii.whitespace);
 
     if (trimmed.len == 0) {
-        fatal("RELEASE.txt is empty");
+        fatal(io, "RELEASE.txt is empty");
     }
 
     if (!isValidLevel(trimmed)) {
         var buf: [256]u8 = undefined;
-        var w = std.fs.File.stderr().writerStreaming(&buf);
+        var w = std.Io.File.stderr().writerStreaming(io, &buf);
         w.interface.print("error: first line of RELEASE.txt must be PATCH, MINOR, or MAJOR, got: '{s}'\n", .{trimmed}) catch {};
         w.interface.flush() catch {};
         std.process.exit(1);
@@ -37,7 +39,7 @@ pub fn main() void {
 
     var found_notes = false;
     while (r.takeDelimiter('\n') catch {
-        fatal("could not read RELEASE.txt");
+        fatal(io, "could not read RELEASE.txt");
     }) |line| {
         const line_trimmed = std.mem.trim(u8, line, &std.ascii.whitespace);
         if (line_trimmed.len > 0) {
@@ -47,11 +49,11 @@ pub fn main() void {
     }
 
     if (!found_notes) {
-        fatal("RELEASE.txt has no release notes after the bump level");
+        fatal(io, "RELEASE.txt has no release notes after the bump level");
     }
 
     var buf: [64]u8 = undefined;
-    var w = std.fs.File.stdout().writerStreaming(&buf);
+    var w = std.Io.File.stdout().writerStreaming(io, &buf);
     w.interface.print("RELEASE.txt is valid\n", .{}) catch {};
     w.interface.flush() catch {};
 }
@@ -100,17 +102,17 @@ test "isValidLevel: rejects partial and padded matches" {
     try testing.expect(!isValidLevel("MAJORS"));
 }
 
-fn fatal(msg: []const u8) noreturn {
+fn fatal(io: std.Io, msg: []const u8) noreturn {
     var buf: [256]u8 = undefined;
-    var w = std.fs.File.stderr().writerStreaming(&buf);
+    var w = std.Io.File.stderr().writerStreaming(io, &buf);
     w.interface.print("error: {s}\n", .{msg}) catch {};
     w.interface.flush() catch {};
     std.process.exit(1);
 }
 
-fn fatalErr(msg: []const u8, err: anyerror) noreturn {
+fn fatalErr(io: std.Io, msg: []const u8, err: anyerror) noreturn {
     var buf: [256]u8 = undefined;
-    var w = std.fs.File.stderr().writerStreaming(&buf);
+    var w = std.Io.File.stderr().writerStreaming(io, &buf);
     w.interface.print("error: {s}: {s}\n", .{ msg, @errorName(err) }) catch {};
     w.interface.flush() catch {};
     std.process.exit(1);

@@ -54,7 +54,7 @@ chmod +x zeile
 
 ### Library
 
-Requires ⚡ Zig 0.15.2 or later. Add zeile as a dependency with
+Requires ⚡ Zig 0.16.0 or later. Add zeile as a dependency with
 [`zig fetch`](https://ziglang.org/documentation/master/#zig-fetch):
 
 ```sh
@@ -126,12 +126,11 @@ zeile exits with status 1 and prints a diagnostic to stderr on malformed input.
 const std = @import("std");
 const zeile = @import("zeile");
 
-pub fn main() !void {
-    var gpa: std.heap.GeneralPurposeAllocator(.{}) = .init;
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+pub fn main(init: std.process.Init) !void {
+    const allocator = init.gpa;
 
-    const input = try std.fs.File.stdin().readToEndAlloc(allocator, 1 << 20);
+    var stdin = std.Io.File.stdin().readerStreaming(init.io, &.{});
+    const input = try stdin.interface.allocRemaining(allocator, .limited(1 << 20));
     defer allocator.free(input);
 
     const parsed = try std.json.parseFromSlice(
