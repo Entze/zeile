@@ -12,7 +12,7 @@ on:
       - "hk.pkl"
       - ".github/workflows/ci.yml"
       - ".github/workflows/cd.yml"
-      - "RELEASE.txt"
+      - "*.txt"
       - "mise.toml"
       - "renovate.json"
 
