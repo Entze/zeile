@@ -6,6 +6,10 @@ This project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and uses a continuous
 release process.
 
+## 0.2.11
+
+Update zizmor to v1.30.1
+
 ## 0.2.10
 
 Update actions/github-script to v9

@@ -1,2 +1,0 @@
-PATCH
-Update zizmor to v1.30.1
