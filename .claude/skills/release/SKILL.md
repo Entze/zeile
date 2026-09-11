@@ -14,6 +14,10 @@ Create a RELEASE.txt at the repo root. This file feeds the CD pipeline: after
 merging to main, its contents are prepended to CHANGELOG.md and RELEASE.txt is
 deleted. Every branch creates RELEASE.txt from scratch.
 
+RELEASE.txt is optional. A branch without one merges normally and
+triggers no release, which is how Renovate dependency updates land. When
+present it must be valid.
+
 ## Format
 
 ```
