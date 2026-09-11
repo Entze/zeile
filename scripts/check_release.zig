@@ -1,8 +1,15 @@
 const std = @import("std");
 
 pub fn main() void {
-    const file = std.fs.cwd().openFile("RELEASE.txt", .{}) catch |err| {
-        fatalErr("could not open RELEASE.txt", err);
+    const file = std.fs.cwd().openFile("RELEASE.txt", .{}) catch |err| switch (err) {
+        error.FileNotFound => {
+            var buf: [64]u8 = undefined;
+            var w = std.fs.File.stdout().writerStreaming(&buf);
+            w.interface.print("no RELEASE.txt, nothing to release\n", .{}) catch {};
+            w.interface.flush() catch {};
+            return;
+        },
+        else => fatalErr("could not open RELEASE.txt", err),
     };
     defer file.close();
 
