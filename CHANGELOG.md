@@ -6,6 +6,10 @@ This project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and uses a continuous
 release process.
 
+## 0.2.9
+
+Update action-validator to v0.9.0
+
 ## 0.2.8
 
 Update actionlint to v1.7.12
