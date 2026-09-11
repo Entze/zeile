@@ -1,3 +1,0 @@
-PATCH
-- Replace 5D with 5h
-- Replace 7D with 7d
