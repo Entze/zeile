@@ -108,7 +108,7 @@ fn run(allocator: std.mem.Allocator, input: []const u8, writer: *std.io.Writer) 
         ctx_bar_color = yellow;
     }
     const args = .{ parsed.value.model.display_name, parsed.value.cost.total_cost_usd, green, parsed.value.cost.total_lines_added, red, parsed.value.cost.total_lines_removed, reset, five_hour_bar_color, five_hour_bar, reset, five_hour_used_percentage, five_hour_resets_in_ns, seven_day_bar_color, seven_day_bar, reset, seven_day_used_percentage, seven_day_resets_in_ns, ctx_bar_color, ctx_bar, reset, ctx_percentage };
-    try writer.print("Claude {s} [${d:.2}] [{s}+{d}{s}-{d}{s}]\n[5D: {s}{s}{s} {d: >5.1}% {D}] [7D: {s}{s}{s} {d: >5.1}% {D}] [CTX: {s}{s}{s} {d: >3}%]", args);
+    try writer.print("Claude {s} [${d:.2}] [{s}+{d}{s}-{d}{s}]\n[5h: {s}{s}{s} {d: >5.1}% {D}] [7d: {s}{s}{s} {d: >5.1}% {D}] [CTX: {s}{s}{s} {d: >3}%]", args);
     try writer.writeByte('\n');
 }
 
