@@ -276,7 +276,7 @@ fn getField(comptime T: type, comptime prefix: []const u8, data: *const T, path:
 
 test SessionData {
     const gpa = std.testing.allocator;
-    const input = try std.fs.cwd().readFileAlloc(gpa, "tests/resources/session_data/good/complete.json", 1024 * 1024);
+    const input = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, "tests/resources/session_data/good/complete.json", gpa, .limited(1024 * 1024));
     defer gpa.free(input);
     const parsed = try std.json.parseFromSlice(SessionData, gpa, input, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
@@ -325,7 +325,7 @@ test SessionData {
 }
 
 fn parseSessionData(gpa: std.mem.Allocator, path: []const u8) !std.json.Parsed(SessionData) {
-    const input = try std.fs.cwd().readFileAlloc(gpa, path, 1024 * 1024);
+    const input = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, path, gpa, .limited(1024 * 1024));
     defer gpa.free(input);
     return std.json.parseFromSlice(SessionData, gpa, input, .{ .ignore_unknown_fields = true, .allocate = .alloc_always });
 }

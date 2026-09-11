@@ -19,7 +19,7 @@ pub const Error = error{ FieldNotFound, NotPrimitive, InvalidSyntax };
 /// or `{`, or when a braced accessor has no closing `}`.
 /// Propagates `error.FieldNotFound` and `error.NotPrimitive` from the
 /// underlying `get` call, and `error.WriteFailed` from the writer.
-pub fn render(data: anytype, template: []const u8, writer: *std.io.Writer) (Error || std.io.Writer.Error)!void {
+pub fn render(data: anytype, template: []const u8, writer: *std.Io.Writer) (Error || std.Io.Writer.Error)!void {
     var i: usize = 0;
     while (i < template.len) {
         if (template[i] == '$') {
@@ -56,7 +56,7 @@ pub fn render(data: anytype, template: []const u8, writer: *std.io.Writer) (Erro
     }
 }
 
-fn writePrimitive(writer: *std.io.Writer, p: anytype) std.io.Writer.Error!void {
+fn writePrimitive(writer: *std.Io.Writer, p: anytype) std.Io.Writer.Error!void {
     switch (p) {
         .null => try writer.writeAll("null"),
         .bool => |v| try writer.writeAll(if (v) "true" else "false"),
@@ -68,8 +68,8 @@ fn writePrimitive(writer: *std.io.Writer, p: anytype) std.io.Writer.Error!void {
     }
 }
 
-fn renderAlloc(data: anytype, template: []const u8, gpa: std.mem.Allocator) (Error || std.io.Writer.Error || error{OutOfMemory})![]const u8 {
-    var aw: std.io.Writer.Allocating = .init(gpa);
+fn renderAlloc(data: anytype, template: []const u8, gpa: std.mem.Allocator) (Error || std.Io.Writer.Error || error{OutOfMemory})![]const u8 {
+    var aw: std.Io.Writer.Allocating = .init(gpa);
     errdefer aw.deinit();
     try render(data, template, &aw.writer);
     return try aw.toOwnedSlice();
@@ -79,7 +79,7 @@ const testing = struct {
     const SessionData = @import("root.zig").SessionData;
 
     fn parseSessionData(gpa: std.mem.Allocator, path: []const u8) !std.json.Parsed(SessionData) {
-        const input = try std.fs.cwd().readFileAlloc(gpa, path, 1024 * 1024);
+        const input = try std.Io.Dir.cwd().readFileAlloc(std.testing.io, path, gpa, .limited(1024 * 1024));
         defer gpa.free(input);
         return std.json.parseFromSlice(SessionData, gpa, input, .{ .ignore_unknown_fields = true, .allocate = .alloc_always });
     }
