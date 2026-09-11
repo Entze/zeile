@@ -38,6 +38,23 @@ const input_bytes_max = jsonSizeMax(zeile.SessionData);
 /// Size of the I/O streaming buffer.
 const io_buf_size = 4096;
 
+/// Length of the short rate limit window, in hours.
+const five_hour_window_h = 5;
+
+/// Length of the long rate limit window, in hours.
+const seven_day_window_h = 7 * 24;
+
+/// Context window fill at which the bar reaches the middle of the color ramp.
+const ctx_pct_yellow = 50.0;
+
+/// Context window fill at which the bar reaches the end of the color ramp.
+const ctx_pct_red = 65.0;
+
+/// Convert a whole number of seconds to hours.
+fn hours(seconds: i64) f64 {
+    return @as(f64, @floatFromInt(seconds)) / std.time.s_per_hour;
+}
+
 pub fn main(init: std.process.Init) void {
     const allocator = init.gpa;
     const io = init.io;
@@ -73,40 +90,42 @@ pub fn main(init: std.process.Init) void {
 fn run(allocator: std.mem.Allocator, io: std.Io, input: []const u8, writer: *std.Io.Writer) !void {
     const parsed = try std.json.parseFromSlice(zeile.SessionData, allocator, input, .{ .ignore_unknown_fields = true });
     defer parsed.deinit();
-    const red = "\x1B[31m";
-    const yellow = "\x1B[33m";
-    const green = "\x1B[32m";
-    const reset = "\x1B[0m";
+    const color = zeile.color;
+    const now_s = std.Io.Timestamp.now(io, .real).toSeconds();
+
     const five_hour_used_percentage = if (parsed.value.rate_limits != null and parsed.value.rate_limits.?.five_hour != null) parsed.value.rate_limits.?.five_hour.?.used_percentage else 0.0;
     const five_hour_resets_at: i64 = if (parsed.value.rate_limits != null and parsed.value.rate_limits.?.five_hour != null) @intCast(parsed.value.rate_limits.?.five_hour.?.resets_at) else 0;
-    const five_hour_resets_in: std.Io.Duration = .fromNanoseconds(@min(@max(0, five_hour_resets_at - std.Io.Timestamp.now(io, .real).toSeconds()) * std.time.ns_per_s, 5 * std.time.ns_per_hour));
+    const five_hour_resets_in_s: i64 = @min(@max(0, five_hour_resets_at - now_s), five_hour_window_h * std.time.s_per_hour);
+    const five_hour_resets_in: std.Io.Duration = .fromNanoseconds(five_hour_resets_in_s * std.time.ns_per_s);
     const five_hour_bar = zeile.progressbar.format(10, "[", ' ', &.{ ".", "-", "/", "|", "\\", "=", ">", "+", "x", "#" }, "]", five_hour_used_percentage);
-    var five_hour_bar_color = green;
-    if (five_hour_used_percentage >= 88.8) {
-        five_hour_bar_color = red;
-    } else if (five_hour_used_percentage >= 66.6) {
-        five_hour_bar_color = yellow;
-    }
-    const seven_day_resets_at: i64 = if (parsed.value.rate_limits != null and parsed.value.rate_limits.?.seven_day != null) @intCast(parsed.value.rate_limits.?.seven_day.?.resets_at) else 0;
-    const seven_day_resets_in: std.Io.Duration = .fromNanoseconds(@min(@max(0, seven_day_resets_at - std.Io.Timestamp.now(io, .real).toSeconds()) * std.time.ns_per_s, 7 * std.time.ns_per_week));
-    const seven_day_used_percentage = if (parsed.value.rate_limits != null and parsed.value.rate_limits.?.seven_day != null) parsed.value.rate_limits.?.seven_day.?.used_percentage else 0.0;
-    const seven_day_bar = zeile.progressbar.format(10, "[", ' ', &.{ ".", "-", "/", "|", "\\", "=", ">", "+", "x", "#" }, "]", seven_day_used_percentage);
+    const five_hour_bar_color = color.gradient(zeile.usage.pressure(
+        five_hour_used_percentage,
+        five_hour_window_h,
+        hours(five_hour_resets_in_s),
+    ));
 
-    var seven_day_bar_color = green;
-    if (seven_day_used_percentage >= 90.0) {
-        seven_day_bar_color = red;
-    } else if (seven_day_used_percentage >= 75.0) {
-        seven_day_bar_color = yellow;
-    }
+    const seven_day_used_percentage = if (parsed.value.rate_limits != null and parsed.value.rate_limits.?.seven_day != null) parsed.value.rate_limits.?.seven_day.?.used_percentage else 0.0;
+    const seven_day_resets_at: i64 = if (parsed.value.rate_limits != null and parsed.value.rate_limits.?.seven_day != null) @intCast(parsed.value.rate_limits.?.seven_day.?.resets_at) else 0;
+    const seven_day_resets_in_s: i64 = @min(@max(0, seven_day_resets_at - now_s), seven_day_window_h * std.time.s_per_hour);
+    const seven_day_resets_in: std.Io.Duration = .fromNanoseconds(seven_day_resets_in_s * std.time.ns_per_s);
+    const seven_day_bar = zeile.progressbar.format(10, "[", ' ', &.{ ".", "-", "/", "|", "\\", "=", ">", "+", "x", "#" }, "]", seven_day_used_percentage);
+    const seven_day_bar_color = color.gradient(zeile.usage.pressure(
+        seven_day_used_percentage,
+        seven_day_window_h,
+        hours(seven_day_resets_in_s),
+    ));
+
     const ctx_percentage = parsed.value.context_window.used_percentage orelse 0;
     const ctx_bar = zeile.progressbar.format(10, "[", ' ', &.{ ".", "-", "/", "|", "\\", "=", ">", "^", "<", "v", "+", "x", "#" }, "]", @floatFromInt(ctx_percentage));
+    const ctx_bar_color = color.gradient(zeile.usage.fill(
+        @floatFromInt(ctx_percentage),
+        ctx_pct_yellow,
+        ctx_pct_red,
+    ));
 
-    var ctx_bar_color = green;
-    if (ctx_percentage >= 65.0) {
-        ctx_bar_color = red;
-    } else if (ctx_percentage >= 50.0) {
-        ctx_bar_color = yellow;
-    }
+    const green = color.green;
+    const red = color.red;
+    const reset = color.reset;
     const args = .{ parsed.value.model.display_name, parsed.value.cost.total_cost_usd, green, parsed.value.cost.total_lines_added, red, parsed.value.cost.total_lines_removed, reset, five_hour_bar_color, five_hour_bar, reset, five_hour_used_percentage, five_hour_resets_in, seven_day_bar_color, seven_day_bar, reset, seven_day_used_percentage, seven_day_resets_in, ctx_bar_color, ctx_bar, reset, ctx_percentage };
     try writer.print("Claude {s} [${d:.2}] [{s}+{d}{s}-{d}{s}]\n[5h: {s}{s}{s} {d: >5.1}% {f}] [7d: {s}{s}{s} {d: >5.1}% {f}] [CTX: {s}{s}{s} {d: >3}%]", args);
     try writer.writeByte('\n');
