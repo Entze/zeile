@@ -8,3 +8,8 @@ allow_dirty = true
 filename = "build.zig.zon"
 search = '.version = "{current_version}"'
 replace = '.version = "{new_version}"'
+
+[[tool.bumpversion.files]]
+filename = "README.md"
+search = 'zig fetch --save "https://github.com/Entze/zeile/archive/refs/tags/v{current_version}.tar.gz"'
+replace = 'zig fetch --save "https://github.com/Entze/zeile/archive/refs/tags/v{new_version}.tar.gz"'
