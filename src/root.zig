@@ -1,7 +1,9 @@
 const std = @import("std");
 
+pub const color = @import("color.zig");
 pub const expression = @import("expression.zig");
 pub const progressbar = @import("progressbar.zig");
+pub const usage = @import("usage.zig");
 
 /// Current model identifier and display name.
 pub const Model = struct {
@@ -302,11 +304,11 @@ test SessionData {
     try std.testing.expectEqual(@as(u64, 200000), session.context_window.context_window_size);
     try std.testing.expectEqual(@as(?u8, 8), session.context_window.used_percentage);
     try std.testing.expectEqual(@as(?u8, 92), session.context_window.remaining_percentage);
-    const usage = session.context_window.current_usage.?;
-    try std.testing.expectEqual(@as(u64, 8500), usage.input_tokens);
-    try std.testing.expectEqual(@as(u64, 1200), usage.output_tokens);
-    try std.testing.expectEqual(@as(u64, 5000), usage.cache_creation_input_tokens);
-    try std.testing.expectEqual(@as(u64, 2000), usage.cache_read_input_tokens);
+    const tokens = session.context_window.current_usage.?;
+    try std.testing.expectEqual(@as(u64, 8500), tokens.input_tokens);
+    try std.testing.expectEqual(@as(u64, 1200), tokens.output_tokens);
+    try std.testing.expectEqual(@as(u64, 5000), tokens.cache_creation_input_tokens);
+    try std.testing.expectEqual(@as(u64, 2000), tokens.cache_read_input_tokens);
     try std.testing.expect(!session.exceeds_200k_tokens);
     const five_hour = session.rate_limits.?.five_hour.?;
     try std.testing.expect(five_hour.used_percentage == 23.5);
