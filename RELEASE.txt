@@ -1,2 +1,0 @@
-PATCH
-Update actions/github-script to v9
