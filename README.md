@@ -18,8 +18,14 @@ reusable library that other programs can depend on.
 
 ```
 Claude Opus [$0.01] [+156-23]
-[5h: [##/       ]  23.5%  1h23m] [7d: [####.     ]  41.2%  3d12h] [CTX: [v         ]   8%]
+[5h: [##/       ]  23.5% 14.87%/h 1h23m] [7d: [####.     ]  41.2% 11.79%/d 3d12h] [CTX: [v         ]   8%]
 ```
+
+Each rate limit window shows the share spent, the average rate at which it was
+spent and the time until it resets. The rate is given per hour when that is at
+least 1 % and at most 60 %, per minute, second or millisecond when it is faster
+and per day when it is slower, so the number stays readable. The countdown drops
+seconds from one hour on and minutes from one day on.
 
 The rate limit bars are colored by pace rather than by fill. The affordable rate
 is the unspent share of a window divided by the time left until it resets; the
