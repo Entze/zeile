@@ -27,17 +27,19 @@ current rate is the spent share divided by the time since the window opened.
 
 | Color  | Current rate against affordable rate |
 | ------ | ------------------------------------ |
-| Green  | up to 1.15 ×                         |
+| Blue   | below 0.50 ×                         |
+| Green  | 0.80 × to 1.15 ×                     |
 | Yellow | 1.70 ×                               |
 | Red    | 2.50 × and above                     |
 
-Colors blend along a green to yellow to red ramp between those points, spaced by
-the logarithm of the multiple, so a session twice over pace is always the same
-distance further along the ramp. An untouched window is always green and an
-exhausted one is always red.
+Colors blend along a blue to green to yellow to red ramp between those points,
+spaced by the logarithm of the multiple, so a session twice over pace is always
+the same distance further along the ramp. An untouched window is always blue and
+an exhausted one is always red.
 
-The context window has no reset to pace against, so its bar is fill-based: green
-up to 35 %, yellow at 50 % and red at 65 % and above.
+The context window has no reset to pace against, so its bar is fill-based and
+blends along the same ramp: blue when empty, green at 15 %, yellow at 60 % and
+red at 100 %.
 
 ## Installation
 
