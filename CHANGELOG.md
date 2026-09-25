@@ -6,6 +6,17 @@ This project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and uses a continuous
 release process.
 
+## 0.6.0
+
+Show usage rate and coarser countdowns
+
+- Rate limit windows show the average usage rate in %/time after the share
+  spent, in the unit that keeps the number at or below 60 (per day below 1 %/h)
+- The reset countdown shows seconds only below one hour and minutes only below
+  one day, and no longer uses weeks
+- Tests of the library modules are now run by `zig build test`; previously only
+  the ones in `root.zig` and `main.zig` were
+
 ## 0.5.0
 
 Add blue to the progress bar colors
