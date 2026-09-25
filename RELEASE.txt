@@ -1,8 +1,0 @@
-PATCH
-Fix packslip dry run in release workflow
-
-- The packslip step now passes plain file names, the platform and format of
-  the glibc and musl binaries are inferred from them; the previous platform
-  suffixes matched no files and failed the step after the release was created
-- The release log shows the packslip manifest that would be published, as it is
-  still not uploaded to the release

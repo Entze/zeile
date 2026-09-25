@@ -6,6 +6,16 @@ This project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and uses a continuous
 release process.
 
+## 0.6.2
+
+Fix packslip dry run in release workflow
+
+- The packslip step now passes plain file names, the platform and format of the
+  glibc and musl binaries are inferred from them; the previous platform suffixes
+  matched no files and failed the step after the release was created
+- The release log shows the packslip manifest that would be published, as it is
+  still not uploaded to the release
+
 ## 0.6.1
 
 Prepare packslip release manifest
