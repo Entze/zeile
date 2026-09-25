@@ -6,6 +6,17 @@ This project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and uses a continuous
 release process.
 
+## 0.6.1
+
+Prepare packslip release manifest
+
+- The release workflow now runs the packslip action after creating the GitHub
+  release, describing the glibc and musl binaries as Linux x86_64 builds
+- The manifest is only built and signed for now (dry run), it is not yet
+  uploaded to the release
+- The release job additionally requests `id-token` and `attestations` write
+  permissions to sign the manifest and publish build provenance
+
 ## 0.6.0
 
 Show usage rate and coarser countdowns
