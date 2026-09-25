@@ -1,6 +1,7 @@
 const std = @import("std");
 
 pub const color = @import("color.zig");
+pub const duration = @import("duration.zig");
 pub const expression = @import("expression.zig");
 pub const progressbar = @import("progressbar.zig");
 pub const usage = @import("usage.zig");
@@ -274,6 +275,10 @@ fn getField(comptime T: type, comptime prefix: []const u8, data: *const T, path:
         }
     }
     return error.FieldNotFound;
+}
+
+test {
+    std.testing.refAllDecls(@This());
 }
 
 test SessionData {

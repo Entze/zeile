@@ -43,6 +43,100 @@ test rate {
     try testing.expectEqual(@as(f64, 25.0), rate(50.0, 2.0));
 }
 
+/// Time unit a rate is expressed per.
+pub const Unit = enum {
+    d,
+    h,
+    min,
+    s,
+    ms,
+
+    /// How many of the unit make up one hour.
+    fn perHour(self: Unit) f64 {
+        return switch (self) {
+            .d => 1.0 / 24.0,
+            .h => 1.0,
+            .min => 60.0,
+            .s => 3600.0,
+            .ms => 3_600_000.0,
+        };
+    }
+};
+
+/// A rate in percent of the window per `unit`, scaled by `scale` to be easy to
+/// read.
+pub const Scaled = struct {
+    pct: f64,
+    unit: Unit,
+
+    pub fn format(self: Scaled, w: *std.Io.Writer) std.Io.Writer.Error!void {
+        try w.print("{d:.2}%/{s}", .{ self.pct, @tagName(self.unit) });
+    }
+};
+
+/// Express a rate per hour in the time unit that keeps the number small.
+///
+/// From one percent per hour on, the largest of hours, minutes, seconds and
+/// milliseconds that keeps the number at or below 60 is used. Below one percent
+/// per hour the rate is given per day, which is at most 24 there. The slowest
+/// unit that is still readable is preferred, so 36 %/h is not 0.6 %/min.
+///
+/// `rate_h` is the rate in percent of the window per hour. A NaN or negative
+/// `rate_h` is treated as zero and an infinite one is given per millisecond.
+pub fn scale(rate_h: f64) Scaled {
+    if (!(rate_h > 0.0)) return .{ .pct = 0.0, .unit = .d };
+    if (rate_h < 1.0) return .{ .pct = rate_h / Unit.d.perHour(), .unit = .d };
+    inline for (.{ Unit.h, Unit.min, Unit.s }) |unit| {
+        const pct = rate_h / unit.perHour();
+        if (pct <= 60.0) return .{ .pct = pct, .unit = unit };
+    }
+    return .{ .pct = rate_h / Unit.ms.perHour(), .unit = .ms };
+}
+
+test scale {
+    // 0.01 %/s is 0.6 %/min is 36 %/h.
+    const s = scale(36.0);
+    try testing.expectApproxEqRel(@as(f64, 36.0), s.pct, 1e-9);
+    try testing.expectEqual(Unit.h, s.unit);
+    // 61 %/h is 1.02 %/min.
+    const min = scale(61.0);
+    try testing.expectApproxEqRel(@as(f64, 61.0 / 60.0), min.pct, 1e-9);
+    try testing.expectEqual(Unit.min, min.unit);
+}
+
+test "scale: below one percent per hour is per day" {
+    const s = scale(0.5);
+    try testing.expectApproxEqRel(@as(f64, 12.0), s.pct, 1e-9);
+    try testing.expectEqual(Unit.d, s.unit);
+}
+
+test "scale: the boundaries stay in the slower unit" {
+    try testing.expectEqual(Unit.h, scale(1.0).unit);
+    try testing.expectEqual(Unit.h, scale(60.0).unit);
+    try testing.expectEqual(Unit.min, scale(3600.0).unit);
+    try testing.expectEqual(Unit.s, scale(216_000.0).unit);
+    try testing.expectEqual(Unit.ms, scale(216_000.1).unit);
+}
+
+test "scale: zero, nan and negative are zero per day" {
+    for ([_]f64{ 0.0, std.math.nan(f64), -1.0 }) |rate_h| {
+        const s = scale(rate_h);
+        try testing.expectEqual(@as(f64, 0.0), s.pct);
+        try testing.expectEqual(Unit.d, s.unit);
+    }
+}
+
+test "scale: infinite is infinite per millisecond" {
+    const s = scale(std.math.inf(f64));
+    try testing.expect(std.math.isInf(s.pct));
+    try testing.expectEqual(Unit.ms, s.unit);
+}
+
+test "Scaled: is written with two digits" {
+    try testing.expectFmt("36.00%/h", "{f}", .{Scaled{ .pct = 36.0, .unit = .h }});
+    try testing.expectFmt("1.02%/min", "{f}", .{Scaled{ .pct = 1.0166, .unit = .min }});
+}
+
 /// Average rate, in percent of the window per hour, that the unspent share
 /// affords from now until the window resets.
 ///
