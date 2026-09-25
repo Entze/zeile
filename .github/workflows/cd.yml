@@ -119,16 +119,23 @@ jobs:
             zeile-x86_64-linux-musl
 
       # The push above is not a tag event, so tag, version and commit must be
-      # passed explicitly. Raw binaries are described with explicit platforms.
+      # passed explicitly. The artifacts input takes plain file globs, platform
+      # and format are inferred from the file names.
       - name: Publish packslip
+        id: packslip
         if: steps.guard.outputs.skip != 'true'
         uses: jdx/packslip@4920350c39c234c7a969f9775040bd02829f1923 # v1.3.0
         with:
-          artifacts: >-
-            zeile-x86_64-linux-gnu:linux/x86_64/gnu
-            zeile-x86_64-linux-musl:linux/x86_64/musl
+          artifacts: zeile-x86_64-linux-gnu zeile-x86_64-linux-musl
           bin: zeile
           upload: false # dry run: keep the bundle local until verified
           tag: v${{ steps.version.outputs.value }}
           version: ${{ steps.version.outputs.value }}
           commit: ${{ steps.commit.outputs.sha }}
+
+      # Only needed while upload is disabled, to inspect what would be published
+      - name: Show packslip
+        if: steps.guard.outputs.skip != 'true'
+        env:
+          BUNDLE: ${{ steps.packslip.outputs.bundle }}
+        run: packslip show "$BUNDLE"
