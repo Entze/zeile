@@ -2,7 +2,7 @@
 
 - Use `mise exec -- hk fix` to format and apply fixes suggested by linters
 - Use `mise exec -- hk check` to present issues that have to be fixed manually
-- Use `mise exec -- hk run lint` to run checks that are executed during CI for PR QA
+- Use `mise exec -- hk run --profile qa check --all` to run checks that are executed during CI for PR QA
 - Use `mise exec -- zig build --summary all test` to run the unit tests
 - `zig std` does not emit any information, instead it starts a webserver and opens the browser, you cannot use it for reference. Directly use the zig source code instead.
 
