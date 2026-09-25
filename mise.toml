@@ -9,3 +9,4 @@ actionlint = "1.7.12"
 "pipx:bump-my-version" = "1.5.1"
 "pipx:mdformat" = { version = "1.0.0", uvx_args = "--with mdformat-gfm", pipx_args = "--preinstall mdformat-gfm" }
 taplo = "0.10.0"
+shellcheck = "0.11.0"                                                                                              # used by actionlint
