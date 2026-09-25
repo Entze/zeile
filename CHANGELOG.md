@@ -6,6 +6,18 @@ This project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and uses a continuous
 release process.
 
+## 0.5.0
+
+Add blue to the progress bar colors
+
+- Rate limit bars are blue below 0.5 times the affordable rate and green from
+  0.8 to 1.15 times it, blending in between
+- An untouched window is now blue instead of green
+- The context window bar blends from blue at 0% through green at 15% and yellow
+  at 60% to red at 100%
+- The color ramp now walks the 256-color cube from blue through cyan to green,
+  and is driven by a list of stops
+
 ## 0.4.0
 
 Rework color calculation
