@@ -44,12 +44,6 @@ const five_hour_window_h = 5;
 /// Length of the long rate limit window, in hours.
 const seven_day_window_h = 7 * 24;
 
-/// Context window fill at which the bar reaches the middle of the color ramp.
-const ctx_pct_yellow = 50.0;
-
-/// Context window fill at which the bar reaches the end of the color ramp.
-const ctx_pct_red = 65.0;
-
 /// Convert a whole number of seconds to hours.
 fn hours(seconds: i64) f64 {
     return @as(f64, @floatFromInt(seconds)) / std.time.s_per_hour;
@@ -98,30 +92,26 @@ fn run(allocator: std.mem.Allocator, io: std.Io, input: []const u8, writer: *std
     const five_hour_resets_in_s: i64 = @min(@max(0, five_hour_resets_at - now_s), five_hour_window_h * std.time.s_per_hour);
     const five_hour_resets_in: std.Io.Duration = .fromNanoseconds(five_hour_resets_in_s * std.time.ns_per_s);
     const five_hour_bar = zeile.progressbar.format(10, "[", ' ', &.{ ".", "-", "/", "|", "\\", "=", ">", "+", "x", "#" }, "]", five_hour_used_percentage);
-    const five_hour_bar_color = color.gradient(zeile.usage.pressure(
+    const five_hour_bar_color = zeile.usage.paceColor(
         five_hour_used_percentage,
         five_hour_window_h,
         hours(five_hour_resets_in_s),
-    ));
+    );
 
     const seven_day_used_percentage = if (parsed.value.rate_limits != null and parsed.value.rate_limits.?.seven_day != null) parsed.value.rate_limits.?.seven_day.?.used_percentage else 0.0;
     const seven_day_resets_at: i64 = if (parsed.value.rate_limits != null and parsed.value.rate_limits.?.seven_day != null) @intCast(parsed.value.rate_limits.?.seven_day.?.resets_at) else 0;
     const seven_day_resets_in_s: i64 = @min(@max(0, seven_day_resets_at - now_s), seven_day_window_h * std.time.s_per_hour);
     const seven_day_resets_in: std.Io.Duration = .fromNanoseconds(seven_day_resets_in_s * std.time.ns_per_s);
     const seven_day_bar = zeile.progressbar.format(10, "[", ' ', &.{ ".", "-", "/", "|", "\\", "=", ">", "+", "x", "#" }, "]", seven_day_used_percentage);
-    const seven_day_bar_color = color.gradient(zeile.usage.pressure(
+    const seven_day_bar_color = zeile.usage.paceColor(
         seven_day_used_percentage,
         seven_day_window_h,
         hours(seven_day_resets_in_s),
-    ));
+    );
 
     const ctx_percentage = parsed.value.context_window.used_percentage orelse 0;
     const ctx_bar = zeile.progressbar.format(10, "[", ' ', &.{ ".", "-", "/", "|", "\\", "=", ">", "^", "<", "v", "+", "x", "#" }, "]", @floatFromInt(ctx_percentage));
-    const ctx_bar_color = color.gradient(zeile.usage.fill(
-        @floatFromInt(ctx_percentage),
-        ctx_pct_yellow,
-        ctx_pct_red,
-    ));
+    const ctx_bar_color = zeile.usage.fillColor(@floatFromInt(ctx_percentage));
 
     const green = color.green;
     const red = color.red;

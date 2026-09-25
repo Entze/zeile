@@ -1,11 +1,27 @@
 const std = @import("std");
+const color = @import("color.zig");
 const testing = std.testing;
 
-/// Burn-rate multiple of the affordable rate that still counts as on pace.
-const multiple_green = 1.15;
+/// Colors of a rate limit bar by the multiple of the affordable rate that the
+/// current rate amounts to, on a base 2 logarithmic scale.
+///
+/// Blue below half the affordable rate, green from 0.8 to 1.15 times it,
+/// yellow at 1.7 times and red at 2.5 times and beyond.
+const multiple_stops = [_]color.Stop{
+    .{ .at = @log2(0.5), .hue = .blue },
+    .{ .at = @log2(0.8), .hue = .green },
+    .{ .at = @log2(1.15), .hue = .green },
+    .{ .at = @log2(1.7), .hue = .yellow },
+    .{ .at = @log2(2.5), .hue = .red },
+};
 
-/// Burn-rate multiple of the affordable rate that counts as fully over budget.
-const multiple_red = 2.5;
+/// Colors of a context window bar by the percentage filled.
+const fill_stops = [_]color.Stop{
+    .{ .at = 0.0, .hue = .blue },
+    .{ .at = 15.0, .hue = .green },
+    .{ .at = 60.0, .hue = .yellow },
+    .{ .at = 100.0, .hue = .red },
+};
 
 /// Average rate, in percent of the window per hour, at which the window has
 /// been consumed so far.
@@ -48,18 +64,16 @@ test budget {
     try testing.expectApproxEqRel(@as(f64, 0.2777), budget(80.0, 72.0), 1e-3);
 }
 
-/// How far the current burn rate overshoots the rate the unspent share
-/// affords, as a value in [0, 1] suitable for driving a color ramp.
+/// How many times the current burn rate amounts to the rate the unspent share
+/// affords.
 ///
-/// Zero means on pace or better, one means burning through the window at
-/// `multiple_red` times the affordable rate or worse. The scale is linear in
-/// the logarithm of that multiple, so it tracks how many times over budget
-/// the session is rather than the absolute difference between two rates.
+/// Zero means nothing is spent, one means spending in lockstep with the clock
+/// and infinity means the window is exhausted or was spent in no time.
 ///
 /// `window_h` is the full length of the window in hours and `remaining_h` the
 /// time left until it resets; the time elapsed is derived from the two and
 /// clamped to the window. Asserts `window_h` is positive.
-pub fn pressure(used_pct: f64, window_h: f64, remaining_h: f64) f64 {
+pub fn multiple(used_pct: f64, window_h: f64, remaining_h: f64) f64 {
     std.debug.assert(window_h > 0.0);
     const elapsed_h = std.math.clamp(window_h - remaining_h, 0.0, window_h);
 
@@ -67,94 +81,101 @@ pub fn pressure(used_pct: f64, window_h: f64, remaining_h: f64) f64 {
     if (current == 0.0) return 0.0;
 
     const affordable = budget(used_pct, remaining_h);
-    if (affordable == 0.0) return 1.0;
+    if (affordable == 0.0) return std.math.inf(f64);
     if (std.math.isInf(affordable)) return 0.0;
-    if (std.math.isInf(current)) return 1.0;
-
-    const green_at = comptime @log2(@as(f64, multiple_green));
-    const red_at = comptime @log2(@as(f64, multiple_red));
-    const overshoot = @log2(current / affordable);
-    return std.math.clamp((overshoot - green_at) / (red_at - green_at), 0.0, 1.0);
+    return current / affordable;
 }
 
-test pressure {
+test multiple {
     // Two hours into a five hour window with half of it spent: the current
-    // rate of 25 %/h is well over the 16.7 %/h the rest of the window affords.
-    try testing.expect(pressure(50.0, 5.0, 3.0) > 0.5);
+    // rate of 25 %/h is 1.5 times the 16.7 %/h the rest of the window affords.
+    try testing.expectApproxEqRel(@as(f64, 1.5), multiple(50.0, 5.0, 3.0), 1e-9);
 }
 
-test "pressure: an untouched window is on pace" {
-    try testing.expectEqual(@as(f64, 0.0), pressure(0.0, 5.0, 5.0));
-    try testing.expectEqual(@as(f64, 0.0), pressure(0.0, 5.0, 1.0));
-    try testing.expectEqual(@as(f64, 0.0), pressure(0.0, 168.0, 0.0));
+test "multiple: an untouched window is zero" {
+    try testing.expectEqual(@as(f64, 0.0), multiple(0.0, 5.0, 5.0));
+    try testing.expectEqual(@as(f64, 0.0), multiple(0.0, 5.0, 1.0));
+    try testing.expectEqual(@as(f64, 0.0), multiple(0.0, 168.0, 0.0));
 }
 
-test "pressure: spending exactly in step is on pace" {
+test "multiple: spending exactly in step is one" {
     // Linear consumption keeps the current rate equal to the affordable rate.
-    try testing.expectEqual(@as(f64, 0.0), pressure(20.0, 5.0, 4.0));
-    try testing.expectEqual(@as(f64, 0.0), pressure(60.0, 5.0, 2.0));
-    try testing.expectEqual(@as(f64, 0.0), pressure(50.0, 168.0, 84.0));
+    try testing.expectApproxEqRel(@as(f64, 1.0), multiple(20.0, 5.0, 4.0), 1e-9);
+    try testing.expectApproxEqRel(@as(f64, 1.0), multiple(60.0, 5.0, 2.0), 1e-9);
+    try testing.expectApproxEqRel(@as(f64, 1.0), multiple(50.0, 168.0, 84.0), 1e-9);
 }
 
-test "pressure: spending below pace is on pace" {
-    try testing.expectEqual(@as(f64, 0.0), pressure(10.0, 5.0, 4.0));
-    try testing.expectEqual(@as(f64, 0.0), pressure(5.0, 168.0, 84.0));
+test "multiple: an exhausted window is infinite" {
+    try testing.expect(std.math.isInf(multiple(100.0, 5.0, 2.0)));
+    try testing.expect(std.math.isInf(multiple(100.0, 5.0, 0.0)));
 }
 
-test "pressure: the tolerated overshoot is still on pace" {
-    // 22.5 % spent in one hour against the 19.375 %/h the remaining four
-    // hours afford is a multiple of 1.16, just past the green band.
-    try testing.expect(pressure(22.5, 5.0, 4.0) > 0.0);
-    try testing.expect(pressure(22.0, 5.0, 4.0) == 0.0);
+test "multiple: spending with no time elapsed is infinite" {
+    try testing.expect(std.math.isInf(multiple(1.0, 5.0, 5.0)));
 }
 
-test "pressure: an exhausted window is fully over budget" {
-    try testing.expectEqual(@as(f64, 1.0), pressure(100.0, 5.0, 2.0));
-    try testing.expectEqual(@as(f64, 1.0), pressure(100.0, 5.0, 0.0));
+test "multiple: nan is treated as an untouched window" {
+    try testing.expectEqual(@as(f64, 0.0), multiple(std.math.nan(f64), 5.0, 2.0));
 }
 
-test "pressure: spending with no time elapsed is fully over budget" {
-    try testing.expectEqual(@as(f64, 1.0), pressure(1.0, 5.0, 5.0));
-}
-
-test "pressure: grows with the multiple of the affordable rate" {
-    const on_pace = pressure(20.0, 5.0, 4.0);
-    const mild = pressure(30.0, 5.0, 4.0);
-    const heavy = pressure(38.0, 5.0, 4.0);
-    try testing.expect(on_pace < mild);
-    try testing.expect(mild < heavy);
-    try testing.expectEqual(@as(f64, 1.0), pressure(55.0, 5.0, 4.0));
-}
-
-test "pressure: reaches the midpoint at the geometric mean of the multiples" {
-    // One hour into a five hour window the ratio of the current rate to the
-    // affordable one is 4u / (100 - u); solve that for the geometric mean of
-    // the two multiples, which is the midpoint in logarithmic space.
-    const mean = @sqrt(@as(f64, multiple_green * multiple_red));
-    const used_pct = 100.0 * mean / (4.0 + mean);
-    try testing.expectApproxEqAbs(@as(f64, 0.5), pressure(used_pct, 5.0, 4.0), 1e-9);
-}
-
-test "pressure: nan is treated as an untouched window" {
-    try testing.expectEqual(@as(f64, 0.0), pressure(std.math.nan(f64), 5.0, 2.0));
-}
-
-/// Map a fill percentage onto the same [0, 1] scale as `pressure`, for a
-/// window that has no reset to pace against.
+/// Pick a foreground escape sequence for a rate limit bar by how the current
+/// burn rate compares to the affordable one.
 ///
-/// `pct_yellow` maps to the midpoint of the scale and `pct_red` to its end.
-/// A NaN `used_pct` maps to the start. Asserts `pct_yellow` is below
-/// `pct_red`.
-pub fn fill(used_pct: f64, pct_yellow: f64, pct_red: f64) f64 {
-    std.debug.assert(pct_yellow < pct_red);
-    if (used_pct != used_pct) return 0.0;
-    const half_span = pct_red - pct_yellow;
-    return std.math.clamp(0.5 + 0.5 * (used_pct - pct_yellow) / half_span, 0.0, 1.0);
+/// Blue below 0.5 times the affordable rate, green from 0.8 to 1.15 times it,
+/// yellow at 1.7 times and red at 2.5 times and beyond. The colors in between
+/// are blended. Arguments are as in `multiple`.
+pub fn paceColor(used_pct: f64, window_h: f64, remaining_h: f64) []const u8 {
+    return color.gradient(&multiple_stops, @log2(multiple(used_pct, window_h, remaining_h)));
 }
 
-test fill {
-    try testing.expectEqual(@as(f64, 0.5), fill(50.0, 50.0, 65.0));
-    try testing.expectEqual(@as(f64, 1.0), fill(65.0, 50.0, 65.0));
-    try testing.expectEqual(@as(f64, 0.0), fill(35.0, 50.0, 65.0));
-    try testing.expectEqual(@as(f64, 0.0), fill(0.0, 50.0, 65.0));
+test paceColor {
+    // On pace is green, far behind is blue and far ahead is red.
+    try testing.expectEqualStrings("\x1B[38;5;46m", paceColor(20.0, 5.0, 4.0));
+    try testing.expectEqualStrings("\x1B[38;5;21m", paceColor(0.0, 5.0, 4.0));
+    try testing.expectEqualStrings("\x1B[38;5;196m", paceColor(100.0, 5.0, 2.0));
+}
+
+test "paceColor: below half the affordable rate is blue" {
+    // 8 % spent in one hour against the 23 %/h the remaining four afford.
+    try testing.expectEqualStrings("\x1B[38;5;21m", paceColor(8.0, 5.0, 4.0));
+}
+
+test "paceColor: from 0.8 to 1.15 times the affordable rate is green" {
+    // 0.8 times: 4u / (100 - u) = 0.8; 1.15 times: 4u / (100 - u) = 1.15.
+    try testing.expectEqualStrings("\x1B[38;5;46m", paceColor(100.0 * 0.8 / 4.8, 5.0, 4.0));
+    try testing.expectEqualStrings("\x1B[38;5;46m", paceColor(100.0 * 1.15 / 5.15, 5.0, 4.0));
+}
+
+test "paceColor: between half and 0.8 blends from blue to green" {
+    const sequence = paceColor(100.0 * 0.63 / 4.63, 5.0, 4.0);
+    try testing.expect(!std.mem.eql(u8, "\x1B[38;5;21m", sequence));
+    try testing.expect(!std.mem.eql(u8, "\x1B[38;5;46m", sequence));
+}
+
+test "paceColor: 1.7 times the affordable rate is yellow" {
+    try testing.expectEqualStrings("\x1B[38;5;226m", paceColor(100.0 * 1.7 / 5.7, 5.0, 4.0));
+}
+
+test "paceColor: 2.5 times the affordable rate is red" {
+    try testing.expectEqualStrings("\x1B[38;5;196m", paceColor(100.0 * 2.5 / 6.5, 5.0, 4.0));
+}
+
+/// Pick a foreground escape sequence for a context window bar by the
+/// percentage filled.
+///
+/// Blue when empty, green at 15 %, yellow at 60 % and red when full. The
+/// colors in between are blended. A NaN `used_pct` is blue.
+pub fn fillColor(used_pct: f64) []const u8 {
+    return color.gradient(&fill_stops, used_pct);
+}
+
+test fillColor {
+    try testing.expectEqualStrings("\x1B[38;5;21m", fillColor(0.0));
+    try testing.expectEqualStrings("\x1B[38;5;46m", fillColor(15.0));
+    try testing.expectEqualStrings("\x1B[38;5;226m", fillColor(60.0));
+    try testing.expectEqualStrings("\x1B[38;5;196m", fillColor(100.0));
+}
+
+test "fillColor: nan is blue" {
+    try testing.expectEqualStrings("\x1B[38;5;21m", fillColor(std.math.nan(f64)));
 }
