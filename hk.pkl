@@ -1,24 +1,22 @@
-amends "package://github.com/jdx/hk/releases/download/v1.39.0/hk@1.39.0#/Config.pkl"
+amends "package://github.com/jdx/hk/releases/download/v2.2.0/hk@2.2.0#/Config.pkl"
 
-import "package://github.com/jdx/hk/releases/download/v1.39.0/hk@1.39.0#/Builtins.pkl"
+import "package://github.com/jdx/hk/releases/download/v2.2.0/hk@2.2.0#/Builtins.pkl"
 
-local formatters = new Mapping<String, Step> {
-  ["zig_fmt"] {
-    glob = List("**/*.zig", "**/*.zon")
-    check = "zig fmt --check {{files}}"
-    fix = "zig fmt {{files}}"
+steps {
+  // github actions
+  ["actionlint"] = (Builtins.actionlint) {
+    depends = List("newlines", "trailing_whitespace")
   }
-  ["pkl_format"] = Builtins.pkl_format
-  ["mise"] = Builtins.mise
-  ["trailing_whitespace"] = (Builtins.trailing_whitespace) {
-    types = List("text")
-    exclude = List("tests/resources/release/**", "tests/resources/changelog/**")
+  ["action_validator"] {
+    profiles = List("qa")
+    depends = List("yamlfmt")
+    glob = List(".github/workflows/*.yml", ".github/workflows/*.yaml")
+    check = "action-validator {{files}}"
   }
-  ["newlines"] = (Builtins.newlines) {
-    types = List("text")
-    exclude = List("tests/resources/release/**", "tests/resources/changelog/**")
-  }
-  ["taplo_format"] = Builtins.taplo_format
+  ["pinact"] = Builtins.pinact
+  ["zizmor"] = Builtins.zizmor
+
+  // markdown
   ["mdformat"] {
     types = List("markdown")
     exclude =
@@ -32,55 +30,42 @@ local formatters = new Mapping<String, Step> {
     check = "mdformat --check {{files}}"
     fix = "mdformat {{files}}"
   }
-}
 
-local checkers = new Mapping<String, Step> {
+  // mise
+  ["mise"] = Builtins.mise
+
+  // pkl
   ["pkl"] = Builtins.pkl
-  ["actionlint"] = (Builtins.actionlint) {
-    depends = List("newlines", "trailing_whitespace")
-  }
-  ["pinact"] = Builtins.pinact
-  ["zizmor"] = Builtins.zizmor
-  ["taplo"] = Builtins.taplo
-}
+  ["pkl_format"] = Builtins.pkl_format
 
-local linters = new Mapping<String, Step> {
-  ["action_validator"] {
-    depends = List("yamlfmt")
-    glob = List(".github/workflows/*.yml", ".github/workflows/*.yaml")
-    check = "action-validator {{files}}"
+  // text
+  ["newlines"] = (Builtins.newlines) {
+    types = List("text")
+    exclude = List("tests/resources/release/**", "tests/resources/changelog/**")
   }
+  ["trailing_whitespace"] = (Builtins.trailing_whitespace) {
+    types = List("text")
+    exclude = List("tests/resources/release/**", "tests/resources/changelog/**")
+  }
+
+  // toml
+  ["taplo"] = Builtins.taplo
+  ["taplo_format"] = Builtins.taplo_format
+
+  // zig
   ["zig_build"] {
+    profiles = List("qa")
     glob = List("**/*.zig", "**/*.zon")
     check = "zig build --summary all"
   }
+  ["zig_fmt"] {
+    glob = List("**/*.zig", "**/*.zon")
+    check = "zig fmt --check {{files}}"
+    fix = "zig fmt {{files}}"
+  }
   ["zig_test"] {
+    profiles = List("qa")
     glob = List("**/*.zig")
     check = "zig build --summary all test"
-  }
-}
-
-local baseHook = new Hook {
-  steps {
-    ["formatters"] = new Group {
-      steps = formatters
-    }
-    ["checkers"] = new Group {
-      steps = checkers
-    }
-  }
-}
-
-hooks {
-  ["pre-commit"] = (baseHook) {
-    fix = true
-    stash = "git"
-  }
-  ["fix"] = (baseHook) {
-    fix = true
-  }
-  ["check"] = baseHook
-  ["lint"] {
-    steps = linters
   }
 }
