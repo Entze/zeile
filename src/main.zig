@@ -90,7 +90,11 @@ fn run(allocator: std.mem.Allocator, io: std.Io, input: []const u8, writer: *std
     const five_hour_used_percentage = if (parsed.value.rate_limits != null and parsed.value.rate_limits.?.five_hour != null) parsed.value.rate_limits.?.five_hour.?.used_percentage else 0.0;
     const five_hour_resets_at: i64 = if (parsed.value.rate_limits != null and parsed.value.rate_limits.?.five_hour != null) @intCast(parsed.value.rate_limits.?.five_hour.?.resets_at) else 0;
     const five_hour_resets_in_s: i64 = @min(@max(0, five_hour_resets_at - now_s), five_hour_window_h * std.time.s_per_hour);
-    const five_hour_resets_in: std.Io.Duration = .fromNanoseconds(five_hour_resets_in_s * std.time.ns_per_s);
+    const five_hour_resets_in: zeile.duration.Coarse = .{ .seconds = @intCast(five_hour_resets_in_s) };
+    const five_hour_rate = zeile.usage.scale(zeile.usage.rate(
+        five_hour_used_percentage,
+        five_hour_window_h - hours(five_hour_resets_in_s),
+    ));
     const five_hour_bar = zeile.progressbar.format(10, "[", ' ', &.{ ".", "-", "/", "|", "\\", "=", ">", "+", "x", "#" }, "]", five_hour_used_percentage);
     const five_hour_bar_color = zeile.usage.paceColor(
         five_hour_used_percentage,
@@ -101,7 +105,11 @@ fn run(allocator: std.mem.Allocator, io: std.Io, input: []const u8, writer: *std
     const seven_day_used_percentage = if (parsed.value.rate_limits != null and parsed.value.rate_limits.?.seven_day != null) parsed.value.rate_limits.?.seven_day.?.used_percentage else 0.0;
     const seven_day_resets_at: i64 = if (parsed.value.rate_limits != null and parsed.value.rate_limits.?.seven_day != null) @intCast(parsed.value.rate_limits.?.seven_day.?.resets_at) else 0;
     const seven_day_resets_in_s: i64 = @min(@max(0, seven_day_resets_at - now_s), seven_day_window_h * std.time.s_per_hour);
-    const seven_day_resets_in: std.Io.Duration = .fromNanoseconds(seven_day_resets_in_s * std.time.ns_per_s);
+    const seven_day_resets_in: zeile.duration.Coarse = .{ .seconds = @intCast(seven_day_resets_in_s) };
+    const seven_day_rate = zeile.usage.scale(zeile.usage.rate(
+        seven_day_used_percentage,
+        seven_day_window_h - hours(seven_day_resets_in_s),
+    ));
     const seven_day_bar = zeile.progressbar.format(10, "[", ' ', &.{ ".", "-", "/", "|", "\\", "=", ">", "+", "x", "#" }, "]", seven_day_used_percentage);
     const seven_day_bar_color = zeile.usage.paceColor(
         seven_day_used_percentage,
@@ -116,8 +124,8 @@ fn run(allocator: std.mem.Allocator, io: std.Io, input: []const u8, writer: *std
     const green = color.green;
     const red = color.red;
     const reset = color.reset;
-    const args = .{ parsed.value.model.display_name, parsed.value.cost.total_cost_usd, green, parsed.value.cost.total_lines_added, red, parsed.value.cost.total_lines_removed, reset, five_hour_bar_color, five_hour_bar, reset, five_hour_used_percentage, five_hour_resets_in, seven_day_bar_color, seven_day_bar, reset, seven_day_used_percentage, seven_day_resets_in, ctx_bar_color, ctx_bar, reset, ctx_percentage };
-    try writer.print("Claude {s} [${d:.2}] [{s}+{d}{s}-{d}{s}]\n[5h: {s}{s}{s} {d: >5.1}% {f}] [7d: {s}{s}{s} {d: >5.1}% {f}] [CTX: {s}{s}{s} {d: >3}%]", args);
+    const args = .{ parsed.value.model.display_name, parsed.value.cost.total_cost_usd, green, parsed.value.cost.total_lines_added, red, parsed.value.cost.total_lines_removed, reset, five_hour_bar_color, five_hour_bar, reset, five_hour_used_percentage, five_hour_rate, five_hour_resets_in, seven_day_bar_color, seven_day_bar, reset, seven_day_used_percentage, seven_day_rate, seven_day_resets_in, ctx_bar_color, ctx_bar, reset, ctx_percentage };
+    try writer.print("Claude {s} [${d:.2}] [{s}+{d}{s}-{d}{s}]\n[5h: {s}{s}{s} {d: >5.1}% {f} {f}] [7d: {s}{s}{s} {d: >5.1}% {f} {f}] [CTX: {s}{s}{s} {d: >3}%]", args);
     try writer.writeByte('\n');
 }
 
