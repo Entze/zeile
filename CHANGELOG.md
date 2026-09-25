@@ -6,6 +6,15 @@ This project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and uses a continuous
 release process.
 
+## 0.7.0
+
+Publish a signed packslip with releases
+
+- Releases now include a signed packslip manifest (`packslip.sigstore.json`)
+  with build provenance for the glibc and musl binaries
+- Install with `mise use "packslip:Entze/zeile"`, mise then verifies the release
+  and installs the binary matching the machine.
+
 ## 0.6.2
 
 Fix packslip dry run in release workflow

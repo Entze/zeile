@@ -1,7 +1,0 @@
-MINOR
-Publish a signed packslip with releases
-
-- Releases now include a signed packslip manifest (`packslip.sigstore.json`)
-  with build provenance for the glibc and musl binaries
-- Install with `mise use "packslip:Entze/zeile"`, mise then verifies the release
-  and installs the binary matching the machine.
