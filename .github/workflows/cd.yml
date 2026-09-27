@@ -123,7 +123,7 @@ jobs:
       # and format are inferred from the file names.
       - name: Publish packslip
         if: steps.guard.outputs.skip != 'true'
-        uses: jdx/packslip@4920350c39c234c7a969f9775040bd02829f1923 # v1.3.0
+        uses: jdx/packslip@87479dfc6443253dff69601cace5fc6ea07e6df5 # v1.4.0
         with:
           artifacts: zeile-x86_64-linux-gnu zeile-x86_64-linux-musl
           bin: zeile
