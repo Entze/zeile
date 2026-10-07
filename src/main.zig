@@ -1,5 +1,6 @@
 const std = @import("std");
 const zeile = @import("zeile");
+const build_options = @import("build_options");
 
 /// Maximum assumed length of any string value in the JSON input.
 const json_string_len_max = 256;
@@ -53,32 +54,45 @@ pub fn main(init: std.process.Init) void {
     const allocator = init.gpa;
     const io = init.io;
 
+    const args = init.minimal.args.toSlice(init.arena.allocator()) catch
+        std.debug.panic("error: failed to read the command line arguments", .{});
+    const command = parse(args[1..]) catch |err| {
+        fail(io, 2, "{s}; try `zeile --help`", .{switch (err) {
+            error.UnknownCommand => "unknown command",
+            error.UnknownOption => "unknown option",
+            error.TooManyArguments => "too many arguments",
+        }});
+    };
+
     const io_buf = allocator.create([io_buf_size]u8) catch
         std.debug.panic("error: failed to allocate {Bi} for the io buffer", .{io_buf_size});
     defer allocator.destroy(io_buf);
+    var w = std.Io.File.stdout().writerStreaming(io, io_buf);
+
+    if (text(command)) |message| {
+        w.interface.writeAll(message) catch {};
+        w.interface.flush() catch {};
+        return;
+    }
+
+    const path = command.display;
     const input_buf = allocator.alloc(u8, input_bytes_max) catch
         std.debug.panic("error: failed to allocate {Bi} for the input buffer", .{input_bytes_max});
     defer allocator.free(input_buf);
+    const input = readInput(io, path, input_buf) catch |err|
+        fail(io, 1, "failed to read {s} ({s})", .{ if (std.mem.eql(u8, path, "-")) "stdin" else path, @errorName(err) });
 
-    var stdin = std.Io.File.stdin().readerStreaming(io, &.{});
-    const input_len = stdin.interface.readSliceShort(input_buf) catch |err| {
-        var buf: [256]u8 = undefined;
-        var w = std.Io.File.stderr().writerStreaming(io, &buf);
-        w.interface.print("error: {s}\n", .{@errorName(err)}) catch {};
-        w.interface.flush() catch {};
-        std.process.exit(1);
-    };
-    const input = input_buf[0..input_len];
-
-    var w = std.Io.File.stdout().writerStreaming(io, io_buf);
-    run(allocator, io, input, &w.interface) catch |err| {
-        var buf: [256]u8 = undefined;
-        var ew = std.Io.File.stderr().writerStreaming(io, &buf);
-        ew.interface.print("error: failed to process session data ({s})\n", .{@errorName(err)}) catch {};
-        ew.interface.flush() catch {};
-        std.process.exit(1);
-    };
+    run(allocator, io, input, &w.interface) catch |err|
+        fail(io, 1, "failed to process session data ({s})", .{@errorName(err)});
     w.interface.flush() catch {};
+}
+
+fn fail(io: std.Io, status: u8, comptime format: []const u8, args: anytype) noreturn {
+    var buf: [256]u8 = undefined;
+    var w = std.Io.File.stderr().writerStreaming(io, &buf);
+    w.interface.print("error: " ++ format ++ "\n", args) catch {};
+    w.interface.flush() catch {};
+    std.process.exit(status);
 }
 
 fn run(allocator: std.mem.Allocator, io: std.Io, input: []const u8, writer: *std.Io.Writer) !void {
@@ -211,3 +225,161 @@ test "run: null non-nullable field produces parse error" {
     defer aw.deinit();
     try testing.expectError(error.UnexpectedToken, run(allocator, std.testing.io, input, &aw.writer));
 }
+
+/// What the command line asks zeile to do.
+const Command = union(enum) {
+    help,
+    version,
+    display_help,
+    /// Read the session data from this path, `-` being stdin.
+    display: []const u8,
+};
+
+const ParseError = error{ UnknownCommand, UnknownOption, TooManyArguments };
+
+/// Interpret the arguments following the program name.
+fn parse(args: []const []const u8) ParseError!Command {
+    if (args.len == 0) return .{ .display = "-" };
+    const first = args[0];
+    if (isAny(first, &.{ "-h", "--help" })) return if (args.len == 1) .help else error.TooManyArguments;
+    if (isAny(first, &.{ "-V", "--version" })) return if (args.len == 1) .version else error.TooManyArguments;
+    if (!std.mem.eql(u8, first, "display")) {
+        return if (std.mem.startsWith(u8, first, "-")) error.UnknownOption else error.UnknownCommand;
+    }
+
+    const rest = args[1..];
+    if (rest.len == 0) return .{ .display = "-" };
+    if (rest.len > 1) return error.TooManyArguments;
+    if (isAny(rest[0], &.{ "-h", "--help" })) return .display_help;
+    if (rest[0].len > 1 and rest[0][0] == '-') return error.UnknownOption;
+    return .{ .display = rest[0] };
+}
+
+fn isAny(arg: []const u8, candidates: []const []const u8) bool {
+    for (candidates) |candidate| {
+        if (std.mem.eql(u8, arg, candidate)) return true;
+    }
+    return false;
+}
+
+test parse {
+    try testing.expectEqualDeep(Command{ .display = "-" }, try parse(&.{}));
+    try testing.expectEqualDeep(Command.help, try parse(&.{"-h"}));
+    try testing.expectEqualDeep(Command.help, try parse(&.{"--help"}));
+    try testing.expectEqualDeep(Command.version, try parse(&.{"-V"}));
+    try testing.expectEqualDeep(Command.version, try parse(&.{"--version"}));
+    try testing.expectEqualDeep(Command.display_help, try parse(&.{ "display", "--help" }));
+    try testing.expectEqualDeep(Command.display_help, try parse(&.{ "display", "-h" }));
+    try testing.expectEqualDeep(Command{ .display = "-" }, try parse(&.{"display"}));
+    try testing.expectEqualDeep(Command{ .display = "-" }, try parse(&.{ "display", "-" }));
+    try testing.expectEqualDeep(Command{ .display = "status.json" }, try parse(&.{ "display", "status.json" }));
+}
+
+test "parse: unknown command is rejected" {
+    try testing.expectError(error.UnknownCommand, parse(&.{"bogus"}));
+    try testing.expectError(error.UnknownCommand, parse(&.{"status.json"}));
+}
+
+test "parse: unknown option is rejected" {
+    try testing.expectError(error.UnknownOption, parse(&.{"--bogus"}));
+    try testing.expectError(error.UnknownOption, parse(&.{ "display", "--bogus" }));
+}
+
+test "parse: surplus arguments are rejected" {
+    try testing.expectError(error.TooManyArguments, parse(&.{ "-h", "display" }));
+    try testing.expectError(error.TooManyArguments, parse(&.{ "-V", "x" }));
+    try testing.expectError(error.TooManyArguments, parse(&.{ "display", "a.json", "b.json" }));
+    try testing.expectError(error.TooManyArguments, parse(&.{ "display", "--help", "x" }));
+}
+
+/// Fill `buffer` from the file at `path`, or from stdin if `path` is `-`.
+/// Returns the filled prefix.
+fn readInput(io: std.Io, path: []const u8, buffer: []u8) ![]u8 {
+    if (std.mem.eql(u8, path, "-")) {
+        var stdin = std.Io.File.stdin().readerStreaming(io, &.{});
+        const len = try stdin.interface.readSliceShort(buffer);
+        return buffer[0..len];
+    }
+    const file = try std.Io.Dir.cwd().openFile(io, path, .{});
+    defer file.close(io);
+    var reader = file.readerStreaming(io, &.{});
+    const len = try reader.interface.readSliceShort(buffer);
+    return buffer[0..len];
+}
+
+test readInput {
+    var buffer: [input_bytes_max]u8 = undefined;
+    const input = try readInput(testing.io, "tests/resources/session_data/good/minimal.json", &buffer);
+    const expected = try std.Io.Dir.cwd().readFileAlloc(testing.io, "tests/resources/session_data/good/minimal.json", testing.allocator, .limited(1024 * 1024));
+    defer testing.allocator.free(expected);
+    try testing.expectEqualStrings(expected, input);
+}
+
+test "readInput: missing file is an error" {
+    var buffer: [16]u8 = undefined;
+    try testing.expectError(error.FileNotFound, readInput(testing.io, "tests/resources/session_data/missing.json", &buffer));
+}
+
+/// The text printed for commands that only print text, or null for those
+/// that do more.
+fn text(command: Command) ?[]const u8 {
+    return switch (command) {
+        .help => help_text,
+        .version => version_text,
+        .display_help => display_help_text,
+        .display => null,
+    };
+}
+
+test text {
+    try testing.expectEqualStrings(help_text, text(.help).?);
+    try testing.expectEqualStrings(display_help_text, text(.display_help).?);
+    try testing.expectEqual(null, text(.{ .display = "-" }));
+
+    const version = text(.version).?;
+    try testing.expect(std.mem.startsWith(u8, version, "zeile "));
+    try testing.expect(std.mem.endsWith(u8, version, "\n"));
+    _ = try std.SemanticVersion.parse(std.mem.trimEnd(u8, version["zeile ".len..], "\n"));
+}
+
+test "text: help names every command and option" {
+    for ([_][]const u8{ "-h", "--help", "-V", "--version", "display", "STATUS" }) |needle| {
+        try testing.expect(std.mem.indexOf(u8, help_text, needle) != null);
+    }
+    for ([_][]const u8{ "-h", "--help", "STATUS", "stdin" }) |needle| {
+        try testing.expect(std.mem.indexOf(u8, display_help_text, needle) != null);
+    }
+}
+
+const version_text = "zeile " ++ build_options.version ++ "\n";
+
+const help_text =
+    \\Usage: zeile [CMD]
+    \\
+    \\Render a compact status line from Claude Code session data.
+    \\
+    \\Commands:
+    \\  display [STATUS]  Render the status line (default)
+    \\
+    \\Options:
+    \\  -h, --help        Print help
+    \\  -V, --version     Print version
+    \\
+    \\Without CMD, `zeile display` is assumed.
+    \\
+;
+
+const display_help_text =
+    \\Usage: zeile display [STATUS]
+    \\
+    \\Render the status line from the session data in STATUS.
+    \\
+    \\Arguments:
+    \\  STATUS      JSON file as described in
+    \\              https://code.claude.com/docs/en/statusline#full-json-schema
+    \\              Defaults to `-`, which reads from stdin.
+    \\
+    \\Options:
+    \\  -h, --help  Print help
+    \\
+;
