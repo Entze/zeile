@@ -111,9 +111,7 @@ pub fn build(b: *std.Build) void {
 
     // This allows the user to pass arguments to the application in the build
     // command itself, like this: `zig build run -- arg1 arg2 etc`
-    if (b.args) |args| {
-        run_cmd.addArgs(args);
-    }
+    run_cmd.addPassthruArgs();
 
     // Creates an executable that will run `test` blocks from the provided module.
     // Here `mod` needs to define a target, which is why earlier we made sure to
@@ -181,9 +179,7 @@ pub fn build(b: *std.Build) void {
     });
     const run_update_changelog = b.addRunArtifact(update_changelog_exe);
     run_update_changelog.setCwd(.{ .src_path = .{ .owner = b, .sub_path = "" } });
-    if (b.args) |args| {
-        run_update_changelog.addArgs(args);
-    }
+    run_update_changelog.addPassthruArgs();
     const update_changelog_step = b.step("update-changelog", "Update CHANGELOG.md with RELEASE.txt contents");
     update_changelog_step.dependOn(&run_update_changelog.step);
 }

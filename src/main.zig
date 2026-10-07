@@ -10,9 +10,9 @@ fn jsonSizeMax(comptime T: type) comptime_int {
     return switch (@typeInfo(T)) {
         .@"struct" => |s| blk: {
             var size: comptime_int = 2; // {}
-            for (s.fields) |f| {
-                size += f.name.len + 2 + 2 + 2; // "name": ,\n
-                size += jsonSizeMax(f.type);
+            for (s.field_names, s.field_types) |name, FieldType| {
+                size += name.len + 2 + 2 + 2; // "name": ,\n
+                size += jsonSizeMax(FieldType);
             }
             break :blk size;
         },
@@ -23,8 +23,8 @@ fn jsonSizeMax(comptime T: type) comptime_int {
         .bool => 5,
         .@"enum" => |e| blk: {
             var max_len: comptime_int = 0;
-            for (e.fields) |f| {
-                if (f.name.len > max_len) max_len = f.name.len;
+            for (e.field_names) |name| {
+                if (name.len > max_len) max_len = name.len;
             }
             break :blk max_len + 2; // quotes
         },
