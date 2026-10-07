@@ -6,6 +6,15 @@ This project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and uses a continuous
 release process.
 
+## 0.7.1
+
+Upgrade to Zig 0.17.0
+
+- Upgrade to Zig 0.17.0, which is now the minimum supported version
+- Update hk to 2.5.0
+- Update jdx/mise-action to v5.1.1
+- Update jdx/packslip to v1.6.0
+
 ## 0.7.0
 
 Publish a signed packslip with releases
