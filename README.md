@@ -136,7 +136,24 @@ echo '{
 }' | zeile
 ```
 
-zeile exits with status 1 and prints a diagnostic to stderr on malformed input.
+### Commands
+
+```
+zeile [CMD]
+
+zeile -h, --help       Print help
+zeile -V, --version    Print version
+zeile display [STATUS] Render the status line
+zeile display --help   Print help for display
+```
+
+STATUS is a JSON file as described in the
+[Claude Code documentation](https://code.claude.com/docs/en/statusline#full-json-schema).
+If STATUS is omitted or `-`, stdin is read. If CMD is omitted, `zeile display`
+is assumed.
+
+zeile exits with status 1 and prints a diagnostic to stderr on unreadable or
+malformed input, and with status 2 on invalid arguments.
 
 ### Library
 
