@@ -1,0 +1,7 @@
+PATCH
+Upgrade to Zig 0.17.0
+
+- Upgrade to Zig 0.17.0, which is now the minimum supported version
+- Update hk to 2.5.0
+- Update jdx/mise-action to v5.1.1
+- Update jdx/packslip to v1.6.0
