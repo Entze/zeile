@@ -56,11 +56,13 @@ pub fn main(init: std.process.Init) void {
 
     const args = init.minimal.args.toSlice(init.arena.allocator()) catch
         std.debug.panic("error: failed to read the command line arguments", .{});
-    const command = parse(args[1..]) catch |err| {
+    const parsed = parse(args[1..]) catch |err| {
         fail(io, 2, "{s}; try `zeile --help`", .{switch (err) {
             error.UnknownCommand => "unknown command",
             error.UnknownOption => "unknown option",
             error.TooManyArguments => "too many arguments",
+            error.MissingValue => "missing option value",
+            error.InvalidValue => "invalid option value",
         }});
     };
 
@@ -69,23 +71,36 @@ pub fn main(init: std.process.Init) void {
     defer allocator.destroy(io_buf);
     var w = std.Io.File.stdout().writerStreaming(io, io_buf);
 
-    if (text(command)) |message| {
+    if (text(parsed.command)) |message| {
         w.interface.writeAll(message) catch {};
         w.interface.flush() catch {};
         return;
     }
 
-    const path = command.display;
+    const config = zeile.Config.load(init.arena.allocator(), io, parsed.config, init.environ_map.get("XDG_CONFIG_HOME"), init.environ_map.get("HOME")) catch |err|
+        fail(io, 1, "failed to load the configuration ({s})", .{@errorName(err)});
+    const display = parsed.command.display;
+    const pass = resolve(display, config);
+
+    const path = display.status;
     const input_buf = allocator.alloc(u8, input_bytes_max) catch
         std.debug.panic("error: failed to allocate {Bi} for the input buffer", .{input_bytes_max});
     defer allocator.free(input_buf);
     const input = readInput(io, path, input_buf) catch |err|
         fail(io, 1, "failed to read {s} ({s})", .{ if (std.mem.eql(u8, path, "-")) "stdin" else path, @errorName(err) });
 
+    zeile.pass.write(allocator, io, std.Io.Dir.cwd(), pass.pass_mode, pass.pass_file, input) catch |err| switch (err) {
+        error.PathAlreadyExists => fail(io, exit_pass_file_exists, "{s} already exists", .{pass.pass_file}),
+        else => fail(io, 1, "failed to write {s} ({s})", .{ pass.pass_file, @errorName(err) }),
+    };
+
     run(allocator, io, input, &w.interface) catch |err|
         fail(io, 1, "failed to process session data ({s})", .{@errorName(err)});
     w.interface.flush() catch {};
 }
+
+/// Exit status if `--pass-mode=create` finds the pass file.
+const exit_pass_file_exists = 3;
 
 fn fail(io: std.Io, status: u8, comptime format: []const u8, args: anytype) noreturn {
     var buf: [256]u8 = undefined;
@@ -231,28 +246,101 @@ const Command = union(enum) {
     help,
     version,
     display_help,
-    /// Read the session data from this path, `-` being stdin.
-    display: []const u8,
+    display: Display,
 };
 
-const ParseError = error{ UnknownCommand, UnknownOption, TooManyArguments };
+/// Options of the display command. Null means the command line did not
+/// give the option, so the configuration decides.
+const Display = struct {
+    /// Read the session data from this path, `-` being stdin.
+    status: []const u8 = "-",
+    pass_mode: ?zeile.Config.PassMode = null,
+    pass_file: ?[]const u8 = null,
+};
+
+const Parsed = struct {
+    config: ?[]const u8 = null,
+    command: Command,
+};
+
+const ParseError = error{ UnknownCommand, UnknownOption, TooManyArguments, MissingValue, InvalidValue };
 
 /// Interpret the arguments following the program name.
-fn parse(args: []const []const u8) ParseError!Command {
-    if (args.len == 0) return .{ .display = "-" };
-    const first = args[0];
-    if (isAny(first, &.{ "-h", "--help" })) return if (args.len == 1) .help else error.TooManyArguments;
-    if (isAny(first, &.{ "-V", "--version" })) return if (args.len == 1) .version else error.TooManyArguments;
+fn parse(args: []const []const u8) ParseError!Parsed {
+    var parsed: Parsed = .{ .command = .{ .display = .{} } };
+    var rest = args;
+    while (rest.len > 0) {
+        if (try option(rest, "-c", "--config")) |found| {
+            parsed.config = found.value;
+            rest = found.rest;
+        } else break;
+    }
+    if (rest.len == 0) return parsed;
+
+    const first = rest[0];
+    if (isAny(first, &.{ "-h", "--help" })) {
+        parsed.command = .help;
+        return if (rest.len == 1) parsed else error.TooManyArguments;
+    }
+    if (isAny(first, &.{ "-V", "--version" })) {
+        parsed.command = .version;
+        return if (rest.len == 1) parsed else error.TooManyArguments;
+    }
     if (!std.mem.eql(u8, first, "display")) {
         return if (std.mem.startsWith(u8, first, "-")) error.UnknownOption else error.UnknownCommand;
     }
 
-    const rest = args[1..];
-    if (rest.len == 0) return .{ .display = "-" };
-    if (rest.len > 1) return error.TooManyArguments;
-    if (isAny(rest[0], &.{ "-h", "--help" })) return .display_help;
-    if (rest[0].len > 1 and rest[0][0] == '-') return error.UnknownOption;
-    return .{ .display = rest[0] };
+    rest = rest[1..];
+    const arguments_len = rest.len;
+    var display: Display = .{};
+    var status_given = false;
+    while (rest.len > 0) {
+        if (isAny(rest[0], &.{ "-h", "--help" })) {
+            parsed.command = .display_help;
+            return if (arguments_len == 1) parsed else error.TooManyArguments;
+        }
+        if (try option(rest, "-m", "--pass-mode")) |found| {
+            display.pass_mode = std.meta.stringToEnum(zeile.Config.PassMode, found.value) orelse return error.InvalidValue;
+            rest = found.rest;
+        } else if (try option(rest, "-s", "--pass-file")) |found| {
+            display.pass_file = found.value;
+            rest = found.rest;
+        } else if (rest[0].len > 1 and rest[0][0] == '-') {
+            return error.UnknownOption;
+        } else {
+            if (status_given) return error.TooManyArguments;
+            status_given = true;
+            display.status = rest[0];
+            rest = rest[1..];
+        }
+    }
+    parsed.command = .{ .display = display };
+    return parsed;
+}
+
+/// The pass options in effect: the command line overrides the configuration.
+fn resolve(display: Display, config: zeile.Config) zeile.Config.Display {
+    return .{
+        .pass_mode = display.pass_mode orelse config.display.pass_mode,
+        .pass_file = display.pass_file orelse config.display.pass_file,
+    };
+}
+
+const Option = struct { value: []const u8, rest: []const []const u8 };
+
+/// Match the option spelled `short` or `long` at the start of `args`, as
+/// `short VALUE`, `long VALUE` or `long=VALUE`. Returns null if `args` starts
+/// with another option or argument.
+fn option(args: []const []const u8, short: []const u8, long: []const u8) error{MissingValue}!?Option {
+    const arg = args[0];
+    if (std.mem.eql(u8, arg, short) or std.mem.eql(u8, arg, long)) {
+        if (args.len < 2) return error.MissingValue;
+        return .{ .value = args[1], .rest = args[2..] };
+    }
+    if (std.mem.startsWith(u8, arg, long) and arg.len > long.len and arg[long.len] == '=') {
+        return .{ .value = arg[long.len + 1 ..], .rest = args[1..] };
+    }
+    return null;
 }
 
 fn isAny(arg: []const u8, candidates: []const []const u8) bool {
@@ -263,26 +351,84 @@ fn isAny(arg: []const u8, candidates: []const []const u8) bool {
 }
 
 test parse {
-    try testing.expectEqualDeep(Command{ .display = "-" }, try parse(&.{}));
-    try testing.expectEqualDeep(Command.help, try parse(&.{"-h"}));
-    try testing.expectEqualDeep(Command.help, try parse(&.{"--help"}));
-    try testing.expectEqualDeep(Command.version, try parse(&.{"-V"}));
-    try testing.expectEqualDeep(Command.version, try parse(&.{"--version"}));
-    try testing.expectEqualDeep(Command.display_help, try parse(&.{ "display", "--help" }));
-    try testing.expectEqualDeep(Command.display_help, try parse(&.{ "display", "-h" }));
-    try testing.expectEqualDeep(Command{ .display = "-" }, try parse(&.{"display"}));
-    try testing.expectEqualDeep(Command{ .display = "-" }, try parse(&.{ "display", "-" }));
-    try testing.expectEqualDeep(Command{ .display = "status.json" }, try parse(&.{ "display", "status.json" }));
+    try testing.expectEqualDeep(Parsed{ .command = .{ .display = .{} } }, try parse(&.{}));
+    try testing.expectEqualDeep(Parsed{ .command = .help }, try parse(&.{"-h"}));
+    try testing.expectEqualDeep(Parsed{ .command = .help }, try parse(&.{"--help"}));
+    try testing.expectEqualDeep(Parsed{ .command = .version }, try parse(&.{"-V"}));
+    try testing.expectEqualDeep(Parsed{ .command = .version }, try parse(&.{"--version"}));
+    try testing.expectEqualDeep(Parsed{ .command = .display_help }, try parse(&.{ "display", "--help" }));
+    try testing.expectEqualDeep(Parsed{ .command = .display_help }, try parse(&.{ "display", "-h" }));
+    try testing.expectEqualDeep(Parsed{ .command = .{ .display = .{} } }, try parse(&.{"display"}));
+    try testing.expectEqualDeep(Parsed{ .command = .{ .display = .{} } }, try parse(&.{ "display", "-" }));
+    try testing.expectEqualDeep(Parsed{ .command = .{ .display = .{ .status = "status.json" } } }, try parse(&.{ "display", "status.json" }));
+}
+
+test "parse: config is a root option" {
+    const expected = Parsed{ .config = "zeile.json", .command = .{ .display = .{} } };
+    try testing.expectEqualDeep(expected, try parse(&.{ "-c", "zeile.json" }));
+    try testing.expectEqualDeep(expected, try parse(&.{"--config=zeile.json"}));
+    try testing.expectEqualDeep(expected, try parse(&.{ "--config", "zeile.json", "display" }));
+    try testing.expectEqualDeep(
+        Parsed{ .config = "zeile.json", .command = .{ .display = .{ .status = "s.json" } } },
+        try parse(&.{ "-c", "zeile.json", "display", "s.json" }),
+    );
+    try testing.expectEqualDeep(Parsed{ .config = "zeile.json", .command = .help }, try parse(&.{ "-c", "zeile.json", "--help" }));
+    try testing.expectEqualDeep(Parsed{ .config = "later.json", .command = .{ .display = .{} } }, try parse(&.{ "-c", "first.json", "-c", "later.json" }));
+}
+
+test "parse: display takes pass options" {
+    const expected = Parsed{ .command = .{ .display = .{ .pass_mode = .append, .pass_file = "log.jsonl" } } };
+    try testing.expectEqualDeep(expected, try parse(&.{ "display", "-m", "append", "-s", "log.jsonl" }));
+    try testing.expectEqualDeep(expected, try parse(&.{ "display", "--pass-mode=append", "--pass-file=log.jsonl" }));
+    try testing.expectEqualDeep(expected, try parse(&.{ "display", "--pass-mode", "append", "--pass-file", "log.jsonl" }));
+    try testing.expectEqualDeep(expected, try parse(&.{ "display", "-s", "log.jsonl", "-m", "append" }));
+    try testing.expectEqualDeep(
+        Parsed{ .command = .{ .display = .{ .status = "s.json", .pass_mode = .truncate } } },
+        try parse(&.{ "display", "-m", "truncate", "s.json" }),
+    );
+    try testing.expectEqualDeep(
+        Parsed{ .command = .{ .display = .{ .status = "s.json", .pass_mode = .create } } },
+        try parse(&.{ "display", "s.json", "--pass-mode=create" }),
+    );
+    try testing.expectEqualDeep(
+        Parsed{ .command = .{ .display = .{ .pass_mode = .off } } },
+        try parse(&.{ "display", "-m", "off" }),
+    );
+}
+
+test "parse: pass options are not root options" {
+    try testing.expectError(error.UnknownOption, parse(&.{ "-m", "append" }));
+    try testing.expectError(error.UnknownOption, parse(&.{"--pass-mode=append"}));
+    try testing.expectError(error.UnknownOption, parse(&.{ "-s", "log.jsonl" }));
+    try testing.expectError(error.UnknownOption, parse(&.{"--pass-file=log.jsonl"}));
+}
+
+test "parse: config is not a display option" {
+    try testing.expectError(error.UnknownOption, parse(&.{ "display", "-c", "zeile.json" }));
+    try testing.expectError(error.UnknownOption, parse(&.{ "display", "--config=zeile.json" }));
+}
+
+test "parse: missing option value is rejected" {
+    try testing.expectError(error.MissingValue, parse(&.{"-c"}));
+    try testing.expectError(error.MissingValue, parse(&.{ "display", "-m" }));
+    try testing.expectError(error.MissingValue, parse(&.{ "display", "--pass-file" }));
+}
+
+test "parse: invalid pass mode is rejected" {
+    try testing.expectError(error.InvalidValue, parse(&.{ "display", "-m", "overwrite" }));
+    try testing.expectError(error.InvalidValue, parse(&.{ "display", "--pass-mode=" }));
 }
 
 test "parse: unknown command is rejected" {
     try testing.expectError(error.UnknownCommand, parse(&.{"bogus"}));
     try testing.expectError(error.UnknownCommand, parse(&.{"status.json"}));
+    try testing.expectError(error.UnknownCommand, parse(&.{ "-c", "zeile.json", "bogus" }));
 }
 
 test "parse: unknown option is rejected" {
     try testing.expectError(error.UnknownOption, parse(&.{"--bogus"}));
     try testing.expectError(error.UnknownOption, parse(&.{ "display", "--bogus" }));
+    try testing.expectError(error.UnknownOption, parse(&.{ "-c", "zeile.json", "--bogus" }));
 }
 
 test "parse: surplus arguments are rejected" {
@@ -290,6 +436,7 @@ test "parse: surplus arguments are rejected" {
     try testing.expectError(error.TooManyArguments, parse(&.{ "-V", "x" }));
     try testing.expectError(error.TooManyArguments, parse(&.{ "display", "a.json", "b.json" }));
     try testing.expectError(error.TooManyArguments, parse(&.{ "display", "--help", "x" }));
+    try testing.expectError(error.TooManyArguments, parse(&.{ "display", "-m", "off", "--help" }));
 }
 
 /// Fill `buffer` from the file at `path`, or from stdin if `path` is `-`.
@@ -334,7 +481,7 @@ fn text(command: Command) ?[]const u8 {
 test text {
     try testing.expectEqualStrings(help_text, text(.help).?);
     try testing.expectEqualStrings(display_help_text, text(.display_help).?);
-    try testing.expectEqual(null, text(.{ .display = "-" }));
+    try testing.expectEqual(null, text(.{ .display = .{} }));
 
     const version = text(.version).?;
     try testing.expect(std.mem.startsWith(u8, version, "zeile "));
@@ -342,11 +489,31 @@ test text {
     _ = try std.SemanticVersion.parse(std.mem.trimEnd(u8, version["zeile ".len..], "\n"));
 }
 
+test resolve {
+    const config: zeile.Config = .{ .display = .{ .pass_mode = .append, .pass_file = "config.jsonl" } };
+
+    const from_config = resolve(.{}, config);
+    try testing.expectEqual(zeile.Config.PassMode.append, from_config.pass_mode);
+    try testing.expectEqualStrings("config.jsonl", from_config.pass_file);
+
+    const from_flags = resolve(.{ .pass_mode = .truncate, .pass_file = "flag.jsonl" }, config);
+    try testing.expectEqual(zeile.Config.PassMode.truncate, from_flags.pass_mode);
+    try testing.expectEqualStrings("flag.jsonl", from_flags.pass_file);
+
+    const mixed = resolve(.{ .pass_mode = .off }, config);
+    try testing.expectEqual(zeile.Config.PassMode.off, mixed.pass_mode);
+    try testing.expectEqualStrings("config.jsonl", mixed.pass_file);
+
+    const defaults = resolve(.{}, .{});
+    try testing.expectEqual(zeile.Config.PassMode.off, defaults.pass_mode);
+    try testing.expectEqualStrings("/dev/null", defaults.pass_file);
+}
+
 test "text: help names every command and option" {
-    for ([_][]const u8{ "-h", "--help", "-V", "--version", "display", "STATUS" }) |needle| {
+    for ([_][]const u8{ "-h", "--help", "-V", "--version", "-c", "--config", "display", "STATUS" }) |needle| {
         try testing.expect(std.mem.indexOf(u8, help_text, needle) != null);
     }
-    for ([_][]const u8{ "-h", "--help", "STATUS", "stdin" }) |needle| {
+    for ([_][]const u8{ "-h", "--help", "STATUS", "stdin", "-m", "--pass-mode", "off", "create", "truncate", "append", "-s", "--pass-file", "/dev/null" }) |needle| {
         try testing.expect(std.mem.indexOf(u8, display_help_text, needle) != null);
     }
 }
@@ -354,7 +521,7 @@ test "text: help names every command and option" {
 const version_text = "zeile " ++ build_options.version ++ "\n";
 
 const help_text =
-    \\Usage: zeile [CMD]
+    \\Usage: zeile [OPTIONS] [CMD]
     \\
     \\Render a compact status line from Claude Code session data.
     \\
@@ -362,15 +529,18 @@ const help_text =
     \\  display [STATUS]  Render the status line (default)
     \\
     \\Options:
-    \\  -h, --help        Print help
-    \\  -V, --version     Print version
+    \\  -c, --config=CONFIG  JSON file with defaults for the options of commands.
+    \\                       Defaults to $XDG_CONFIG_HOME/zeile/config.json, then
+    \\                       $HOME/.config/zeile/config.json; neither is required.
+    \\  -h, --help           Print help
+    \\  -V, --version        Print version
     \\
     \\Without CMD, `zeile display` is assumed.
     \\
 ;
 
 const display_help_text =
-    \\Usage: zeile display [STATUS]
+    \\Usage: zeile display [OPTIONS] [STATUS]
     \\
     \\Render the status line from the session data in STATUS.
     \\
@@ -380,6 +550,17 @@ const display_help_text =
     \\              Defaults to `-`, which reads from stdin.
     \\
     \\Options:
+    \\  -m, --pass-mode={off,create,truncate,append}
+    \\              Write the parsed JSON compactly to the pass file, one line
+    \\              per run. `create` fails with status 3 if the file exists,
+    \\              `truncate` works like `>`, `append` like `>>`.
+    \\              Defaults to `off`.
+    \\  -s, --pass-file=SINK
+    \\              File to write to. Defaults to `/dev/null`.
     \\  -h, --help  Print help
+    \\
+    \\In the configuration file, the options are keyed by command, e.g.
+    \\{"display": {"pass-mode": "append", "pass-file": "log.jsonl"}}.
+    \\The command line overrides the configuration.
     \\
 ;
