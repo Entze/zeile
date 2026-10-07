@@ -76,7 +76,7 @@ Requires ⚡ Zig 0.17.0 or later. Add zeile as a dependency with
 [`zig fetch`](https://ziglang.org/documentation/master/#zig-fetch):
 
 ```sh
-zig fetch --save "https://github.com/Entze/zeile/archive/refs/tags/v0.8.0.tar.gz"
+zig fetch --save "https://github.com/Entze/zeile/archive/refs/tags/v0.9.0.tar.gz"
 ```
 
 Then wire the module into your `build.zig`:

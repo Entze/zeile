@@ -6,6 +6,20 @@ This project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and uses a continuous
 release process.
 
+## 0.9.0
+
+Add pass-through of the input and configuration file
+
+- Add `zeile display --pass-mode={off,create,truncate,append}` and
+  `--pass-file=SINK`, which write the parsed JSON compactly to SINK like `tee`,
+  so that `append` yields a valid JSON Lines file
+- Exit with status 3 if `--pass-mode=create` finds SINK already existing
+- Add the root option `-c, --config=CONFIG` to read defaults for command options
+  from a JSON file, e.g. `{"display": {"pass-mode": "append"}}`
+- Without `--config`, read `$XDG_CONFIG_HOME/zeile/config.json`, then
+  `$HOME/.config/zeile/config.json`; neither is required
+- Options on the command line override the configuration file
+
 ## 0.8.0
 
 Add command-line interface
