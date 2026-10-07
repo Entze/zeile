@@ -1,0 +1,9 @@
+MINOR
+Add command-line interface
+
+- Add `zeile display [STATUS]`, which reads the session data from the JSON file
+  STATUS, or from stdin when STATUS is `-` or omitted
+- Calling `zeile` without a command still behaves as `zeile display -`
+- Add `-h`/`--help` and `-V`/`--version`, and `zeile display --help`
+- Exit with status 2 and a hint on unknown commands, options or surplus
+  arguments
