@@ -6,6 +6,17 @@ This project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html) and uses a continuous
 release process.
 
+## 0.8.0
+
+Add command-line interface
+
+- Add `zeile display [STATUS]`, which reads the session data from the JSON file
+  STATUS, or from stdin when STATUS is `-` or omitted
+- Calling `zeile` without a command still behaves as `zeile display -`
+- Add `-h`/`--help` and `-V`/`--version`, and `zeile display --help`
+- Exit with status 2 and a hint on unknown commands, options or surplus
+  arguments
+
 ## 0.7.1
 
 Upgrade to Zig 0.17.0
