@@ -1,8 +1,10 @@
 const std = @import("std");
 
+pub const Config = @import("config.zig");
 pub const color = @import("color.zig");
 pub const duration = @import("duration.zig");
 pub const expression = @import("expression.zig");
+pub const pass = @import("pass.zig");
 pub const progressbar = @import("progressbar.zig");
 pub const usage = @import("usage.zig");
 
