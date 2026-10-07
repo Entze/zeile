@@ -139,12 +139,15 @@ echo '{
 ### Commands
 
 ```
-zeile [CMD]
+zeile [-c CONFIG] [CMD]
 
-zeile -h, --help       Print help
-zeile -V, --version    Print version
-zeile display [STATUS] Render the status line
-zeile display --help   Print help for display
+zeile -h, --help         Print help
+zeile -V, --version      Print version
+zeile -c, --config=CONFIG
+                         Read defaults from the JSON file CONFIG
+zeile display [OPTIONS] [STATUS]
+                         Render the status line
+zeile display --help     Print help for display
 ```
 
 STATUS is a JSON file as described in the
@@ -153,7 +156,50 @@ If STATUS is omitted or `-`, stdin is read. If CMD is omitted, `zeile display`
 is assumed.
 
 zeile exits with status 1 and prints a diagnostic to stderr on unreadable or
-malformed input, and with status 2 on invalid arguments.
+malformed input, on an unreadable or malformed configuration, and on failure to
+write the pass file. It exits with status 2 on invalid arguments and with status
+3 if `--pass-mode=create` finds the pass file already existing.
+
+#### Passing the input through
+
+Like `tee`, `zeile display` can write the parsed JSON, compactly on a single
+line, to a file. Repeated runs with `--pass-mode=append` therefore produce a
+valid [JSON Lines](https://jsonlines.org/) file:
+
+```sh
+zeile display --pass-mode=append --pass-file=status.jsonl
+```
+
+| Option                 | Description                                       |
+| ---------------------- | ------------------------------------------------- |
+| `-m, --pass-mode=MODE` | `off` (default), `create`, `truncate` or `append` |
+| `-s, --pass-file=SINK` | File to write to, defaults to `/dev/null`         |
+
+- `off` does not write anything.
+- `create` writes a new file and exits with status 3 if SINK exists.
+- `truncate` replaces the content of SINK, like `>` in the shell.
+- `append` adds to the end of SINK, like `>>` in the shell.
+
+Unknown fields of the input are preserved. Invalid input never modifies SINK.
+
+### Configuration
+
+Defaults for the options of commands are read from a JSON file, with the options
+namespaced by command:
+
+```json
+{
+  "display": {
+    "pass-mode": "append",
+    "pass-file": "log.jsonl"
+  }
+}
+```
+
+The file is `CONFIG` if `--config` is given, in which case it has to exist.
+Otherwise it is the first existing of `$XDG_CONFIG_HOME/zeile/config.json` and
+`$HOME/.config/zeile/config.json`. The configuration is not required. Options on
+the command line override the configuration, which overrides the defaults.
 
 ### Library
 
