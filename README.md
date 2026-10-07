@@ -72,7 +72,7 @@ chmod +x zeile
 
 ### Library
 
-Requires ⚡ Zig 0.16.0 or later. Add zeile as a dependency with
+Requires ⚡ Zig 0.17.0 or later. Add zeile as a dependency with
 [`zig fetch`](https://ziglang.org/documentation/master/#zig-fetch):
 
 ```sh

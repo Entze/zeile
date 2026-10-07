@@ -62,16 +62,16 @@ pub fn gradient(stops: []const Stop, at: f64) []const u8 {
 
     const first = stops[0];
     const last = stops[stops.len - 1];
-    if (!(at > first.at)) return ramp[@intFromEnum(first.hue)];
-    if (!(at < last.at)) return ramp[@intFromEnum(last.hue)];
+    if (!(at > first.at)) return ramp[@backingInt(first.hue)];
+    if (!(at < last.at)) return ramp[@backingInt(last.hue)];
 
     const upper = for (stops[1..], 1..) |stop, index| {
         if (at < stop.at) break index;
     } else unreachable;
     const from = stops[upper - 1];
     const to = stops[upper];
-    const from_step: f64 = @floatFromInt(@intFromEnum(from.hue));
-    const to_step: f64 = @floatFromInt(@intFromEnum(to.hue));
+    const from_step: f64 = @floatFromInt(@backingInt(from.hue));
+    const to_step: f64 = @floatFromInt(@backingInt(to.hue));
     const share = (at - from.at) / (to.at - from.at);
     const step: usize = @intFromFloat(@round(from_step + share * (to_step - from_step)));
     std.debug.assert(step < ramp.len);
@@ -104,20 +104,20 @@ fn stepOf(sequence: []const u8) usize {
 
 test "gradient: stops take their own hue" {
     for (test_stops) |stop| {
-        try testing.expectEqualStrings(ramp[@intFromEnum(stop.hue)], gradient(&test_stops, stop.at));
+        try testing.expectEqualStrings(ramp[@backingInt(stop.hue)], gradient(&test_stops, stop.at));
     }
 }
 
 test "gradient: between equal hues stays put" {
-    try testing.expectEqualStrings(ramp[@intFromEnum(Hue.green)], gradient(&test_stops, 1.5));
+    try testing.expectEqualStrings(ramp[@backingInt(Hue.green)], gradient(&test_stops, 1.5));
 }
 
 test "gradient: out of range positions are clamped" {
-    try testing.expectEqualStrings(ramp[@intFromEnum(Hue.blue)], gradient(&test_stops, -1.0));
-    try testing.expectEqualStrings(ramp[@intFromEnum(Hue.blue)], gradient(&test_stops, -std.math.inf(f64)));
-    try testing.expectEqualStrings(ramp[@intFromEnum(Hue.red)], gradient(&test_stops, 9.0));
-    try testing.expectEqualStrings(ramp[@intFromEnum(Hue.red)], gradient(&test_stops, std.math.inf(f64)));
-    try testing.expectEqualStrings(ramp[@intFromEnum(Hue.blue)], gradient(&test_stops, std.math.nan(f64)));
+    try testing.expectEqualStrings(ramp[@backingInt(Hue.blue)], gradient(&test_stops, -1.0));
+    try testing.expectEqualStrings(ramp[@backingInt(Hue.blue)], gradient(&test_stops, -std.math.inf(f64)));
+    try testing.expectEqualStrings(ramp[@backingInt(Hue.red)], gradient(&test_stops, 9.0));
+    try testing.expectEqualStrings(ramp[@backingInt(Hue.red)], gradient(&test_stops, std.math.inf(f64)));
+    try testing.expectEqualStrings(ramp[@backingInt(Hue.blue)], gradient(&test_stops, std.math.nan(f64)));
 }
 
 test "gradient: crossing the stops walks the whole ramp in order" {
