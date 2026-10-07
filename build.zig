@@ -57,6 +57,9 @@ pub fn build(b: *std.Build) void {
     //
     // If neither case applies to you, feel free to delete the declaration you
     // don't need and to put everything under a single module.
+    const build_options = b.addOptions();
+    build_options.addOption([]const u8, "version", @import("build.zig.zon").version);
+
     const exe = b.addExecutable(.{
         .name = "zeile",
         .root_module = b.createModule(.{
@@ -79,6 +82,7 @@ pub fn build(b: *std.Build) void {
                 // can be extremely useful in case of collisions (which can happen
                 // importing modules from different packages).
                 .{ .name = "zeile", .module = mod },
+                .{ .name = "build_options", .module = build_options.createModule() },
             },
         }),
     });
