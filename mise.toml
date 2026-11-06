@@ -1,7 +1,7 @@
 [tools]
 hk = "2.11.1"
 pinact = "5.0.2"
-pkl = "0.32.2"
+pkl = "0.33.0"
 zig = "0.17.0"
 zizmor = "1.32.0"
 action-validator = "0.9.0"
